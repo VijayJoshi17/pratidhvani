@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "indic-voice-clone"
+version = "0.1.0"
+description = "Clone one Indic-language speaker from archival recordings with Svara-TTS and LoRA"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "soundfile", "librosa"]
+
+[project.optional-dependencies]
+tts = ["torch", "transformers", "accelerate", "peft", "snac", "safetensors", "huggingface_hub"]
+align = ["ctc-forced-aligner", "onnxruntime==1.20.1", "unidecode"]
+speaker = ["torch", "torchaudio", "speechbrain"]
+asr = ["torch", "torchaudio", "transformers"]
+all = ["indic-voice-clone[tts,align,speaker,asr]"]
+dev = ["pytest"]
+# ClearerVoice pins numpy<2: install `clearvoice` in a separate environment
+# and pass its python to `voiceclone prepare --enhance-python`.
+
+[project.scripts]
+voiceclone = "voiceclone.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voiceclone"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
