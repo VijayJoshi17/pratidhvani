@@ -3,6 +3,10 @@
 Each example mirrors the inference prompt ("reference-swap"): the reference
 is another clip of the same speaker, and loss applies only to the target
 audio block. Batch size 1 with gradient accumulation fits a 16 GB laptop.
+
+The final adapter is saved in the output folder itself; intermediate ones
+in checkpoint-NNNNN/ subfolders (about 100 MB each at rank 16). Any of them
+can be passed to `synth --lora`.
 """
 import json
 import random
@@ -32,6 +36,13 @@ class TrainParams:
     max_steps: int = 0
     seed: int = 0
     init_adapter: str | None = None   # continue training a saved LoRA
+    save_every: int = 50      # optimizer steps between kept checkpoints; 0 = final only
+
+
+def checkpoint_dir(out_dir, step: int) -> Path:
+    """Where the adapter after `step` optimizer steps is kept. Each checkpoint
+    gets its own folder, so an earlier one that sounded better is never lost."""
+    return Path(out_dir) / f"checkpoint-{step:05d}"
 
 
 def encode_clips(clips_dir, clips: list[dict], device) -> dict:
@@ -102,7 +113,7 @@ def finetune(clips_dir, out_dir, model_dir: str = DEFAULT_MODEL, p: TrainParams 
         opt, lambda s: min(1.0, (s + 1) / 20) * max(0.05, 1 - s / max(1, total)))
 
     model.train()
-    step, micro, t0, losses = 0, 0, time.time(), []
+    step, micro, t0, losses, saved = 0, 0, time.time(), [], []
     for epoch in range(p.epochs):
         for ids, labels in dl:
             ids, labels = ids.to(device), labels.to(device)
@@ -126,8 +137,8 @@ def finetune(clips_dir, out_dir, model_dir: str = DEFAULT_MODEL, p: TrainParams 
                 el = time.time() - t0
                 log(f"ep{epoch} step {step}/{total} loss {np.mean(losses[-p.grad_accum*5:]):.3f} "
                     f"seq {ids.shape[1]} {el/step:.1f}s/step eta {(total-step)*el/step/60:.0f}min")
-            if step % 50 == 0:
-                model.save_pretrained(out)
+            if p.save_every and step % p.save_every == 0:
+                model.save_pretrained(checkpoint_dir(out, step)); saved.append(step)
             if p.max_steps and step >= p.max_steps:
                 break
         else:
@@ -135,6 +146,7 @@ def finetune(clips_dir, out_dir, model_dir: str = DEFAULT_MODEL, p: TrainParams 
         break
     model.save_pretrained(out)
     write_json(out / "train_log.json", {"losses": losses, "steps": step, "params": asdict(p),
-                                        "clips": str(clips_dir), "model": model_dir})
+                                        "clips": str(clips_dir), "model": model_dir,
+                                        "checkpoints": [checkpoint_dir(out, k).name for k in saved]})
     log(f"saved {out} final loss {np.mean(losses[-20:]):.3f}")
     return out

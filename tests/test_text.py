@@ -48,3 +48,47 @@ def test_star_tokens_wrap_words_and_absorb_trailing_audio():
     assert toks == [STAR, "n i m m a", STAR, "m a n e", STAR]
     assert txt == [STAR, "ನಿಮ್ಮ", STAR, "ಮನೆ", STAR]
     assert star_tokens("... !") == ([], [])
+
+
+# --- other Indic scripts -------------------------------------------------
+# Svara speaks 19 languages. If text in another script transliterates to "",
+# syllables() is 0, synthesis is capped at about 1.6 s, the aligner gets no
+# tokens and best-of divides by zero. These pin the multi-script path.
+import pytest
+
+MULTI = {
+    "Marathi": ("नमस्कार, सगळे कसे आहात?", "namaskaara"),
+    "Hindi": ("नमस्ते", "namastee"),
+    "Telugu": ("నమస్కారం", "namaskaaram"),
+    "Tamil": ("வணக்கம்", "vanakkam"),
+    "Malayalam": ("നമസ്കാരം", "namaskaaram"),
+    "Bengali": ("নমস্কার", "namaskaara"),
+    "Gujarati": ("નમસ્તે", "namastee"),
+    "Gurmukhi": ("ਸਤ", "sata"),
+}
+
+
+@pytest.mark.parametrize("lang", MULTI)
+def test_other_scripts_transliterate(lang):
+    text, first_word = MULTI[lang]
+    assert translit(text.split()[0].strip(",")) == first_word
+    assert syllables(text) > 0
+    assert star_tokens(text)[0], "aligner must get tokens"
+
+
+def test_two_part_vowel_signs_are_not_split():
+    # Tamil ோ canonically decomposes to ெ + ா; splitting it would read as "e"
+    assert translit("எல்லோரும்") == "elloorum"
+
+
+def test_nukta_letters_and_candra_vowels():
+    assert translit("ज़रूर") == "jaruura"      # precomposed nukta letter
+    assert translit("डॉक्टर") == "doktara"     # candra o, as in English loanwords
+
+
+def test_kannada_unchanged_by_script_mapping():
+    assert translit("ನಿಮ್ಮ") == "nimma" and translit("ಕ್ಷಮಾ") == "kshamaa"
+
+
+def test_unsupported_script_gives_empty_not_garbage():
+    assert translit("سلام") == "" and syllables("سلام") == 0

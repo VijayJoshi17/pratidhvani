@@ -17,14 +17,24 @@ from voiceclone.jsonl import read_jsonl
 from voiceclone.text import cer, romanize, syllables
 
 
-def sample_texts(sample_dir, sentences: list[str]) -> dict:
-    """file -> target text, from log.json when present, else by sample index."""
+def sample_texts(sample_dir, sentences: list[str] | None = None) -> dict:
+    """file -> target text. log.json (written by `synth`) wins; otherwise the
+    sample index selects a line of `sentences`."""
     import json
 
     d = Path(sample_dir)
     log = {e["file"]: e["text"] for e in json.load(open(d / "log.json", encoding="utf-8"))} \
         if (d / "log.json").exists() else {}
-    return {f.name: log.get(f.name) or sentences[int(f.stem.split("_")[1])] for f in sorted(d.glob("sample_*.wav"))}
+    out = {}
+    for f in sorted(d.glob("sample_*.wav")):
+        if f.name in log:
+            out[f.name] = log[f.name]
+            continue
+        i = int(f.stem.split("_")[1])
+        if not sentences or i >= len(sentences):
+            raise ValueError(f"{f}: no log.json entry and no sentence #{i}; pass the file you synthesised from")
+        out[f.name] = sentences[i]
+    return out
 
 
 def similarity_report(encoder, clips_dir, sample_dirs=(), files=(), n_enroll: int = 40, log=print) -> dict:
@@ -50,7 +60,7 @@ def similarity_report(encoder, clips_dir, sample_dirs=(), files=(), n_enroll: in
     return report
 
 
-def intelligibility_report(aligner, clips_dir, sentences: list[str], sample_dirs=(), holdout=None,
+def intelligibility_report(aligner, clips_dir, sentences: list[str] | None, sample_dirs=(), holdout=None,
                            n_real: int = 10, log=print) -> dict:
     import json
 
@@ -81,32 +91,47 @@ def select_take(cands: list[dict], pick: str = "gated") -> dict:
     return max(ok, key=lambda c: c["sim"]) if ok else min(cands, key=lambda c: c["cer"])
 
 
-def best_of(encoder, aligner, speaker_centroid, take_dirs, sentences: list[str], out_dir,
+def best_of(encoder, aligner, speaker_centroid, take_dirs, out_dir, sentences: list[str] | None = None,
             pick: str = "gated", max_cer: float = 0.85, natural_sps: float = 3.2, log=print) -> list[dict]:
-    """Copy the best take per sentence into out_dir. A take is "ok" if its CER is at
-    most max_cer and its length is 0.6-1.5x the length expected at natural_sps."""
+    """Copy the best take of each sentence into out_dir.
+
+    Takes are grouped by the text they were synthesised from (their log.json,
+    or `sentences` by index when a folder has no log), so folders made from
+    differently ordered sentence files still compare like with like. A take
+    is "ok" if its CER is at most max_cer and its length is 0.6-1.5x the
+    length expected at natural_sps; if the syllables cannot be counted, the
+    length check is skipped.
+    """
+    import json
+
+    groups: dict[str, list[Path]] = {}
+    for d in take_dirs:
+        for name, text in sample_texts(d, sentences).items():
+            groups.setdefault(text, []).append(Path(d) / name)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    report = []
-    for i, text in enumerate(sentences):
+    report, rows = [], []
+    for i, (text, files) in enumerate(groups.items()):
+        expected = syllables(text) / natural_sps
         cands = []
-        for d in take_dirs:
-            f = Path(d) / f"sample_{i:02d}.wav"
-            if not f.exists():
-                continue
+        for f in files:
             y = load16(f)
-            c = {"take": str(d), "sim": float(np.dot(encoder.embed(y), speaker_centroid)),
+            c = {"take": str(f.parent), "file": f.name, "sim": float(np.dot(encoder.embed(y), speaker_centroid)),
                  "cer": float(cer(aligner.greedy_decode(y), romanize(text))),
-                 "len_ratio": float(len(y) / 16000 / (syllables(text) / natural_sps))}
-            c["ok"] = bool(c["cer"] <= max_cer and 0.6 <= c["len_ratio"] <= 1.5)
+                 "len_ratio": float(len(y) / 16000 / expected) if expected else None}
+            plausible = c["len_ratio"] is None or 0.6 <= c["len_ratio"] <= 1.5
+            c["ok"] = bool(c["cer"] <= max_cer and plausible)
             cands.append(c)
-        if not cands:
-            continue
         best = select_take(cands, pick)
-        shutil.copy(Path(best["take"]) / f"sample_{i:02d}.wav", out / f"sample_{i:02d}.wav")
+        name = f"sample_{i:02d}.wav"
+        shutil.copy(Path(best["take"]) / best["file"], out / name)
+        rows.append({"file": name, "text": text})
         report.append({"sentence": text, "best": best, "candidates": cands})
         log(f"[{i}] " + "  ".join(f"{Path(c['take']).name}: sim {c['sim']:.2f} cer {c['cer']:.2f} "
-                                  f"len {c['len_ratio']:.2f}{'' if c['ok'] else ' X'}" for c in cands)
+                                  f"len {'?' if c['len_ratio'] is None else format(c['len_ratio'], '.2f')}"
+                                  f"{'' if c['ok'] else ' X'}" for c in cands)
             + f"  -> {Path(best['take']).name}")
+    with open(out / "log.json", "w", encoding="utf-8") as fh:   # so trim/eval read the right texts
+        json.dump(rows, fh, ensure_ascii=False, indent=1)
     if report:
         sims = [r["best"]["sim"] for r in report]; cers = [r["best"]["cer"] for r in report]
         log(f"best-of: voice similarity mean {np.mean(sims):.3f} (min {min(sims):.2f}, max {max(sims):.2f}), "

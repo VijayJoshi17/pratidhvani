@@ -105,7 +105,8 @@ def cmd_audacity(a):
     from voiceclone.enhance.audacity import audacity_denoise
 
     chunks_out = a.chunks_out or (str(Path(a.data_dir) / f"vad_{a.tag}_aud") if a.reuse_chunks else None)
-    audacity_denoise(a.src, Path(a.data_dir) / "work" / a.tag, a.app, a.reuse_chunks, chunks_out, log=_log)
+    audacity_denoise(a.src, Path(a.data_dir) / "work" / a.tag, a.app, a.reuse_chunks, chunks_out,
+                     force_restart=a.force_restart, log=_log)
 
 
 # ---------- model ----------
@@ -141,7 +142,7 @@ def cmd_train(a):
 
     p = TrainParams(epochs=a.epochs, lr=a.lr, rank=a.rank, max_ref_sec=a.max_ref_sec, max_tgt_sec=a.max_tgt_sec,
                     grad_accum=a.grad_accum, holdout=a.holdout, max_steps=a.max_steps, seed=a.seed,
-                    init_adapter=a.init_adapter)
+                    init_adapter=a.init_adapter, save_every=a.save_every)
     finetune(a.clips, a.out, a.model, p, log=_log)
 
 
@@ -166,29 +167,34 @@ def cmd_eval_similarity(a):
 def cmd_eval_intelligibility(a):
     from voiceclone.align import Aligner
     from voiceclone.evaluate import intelligibility_report
-    from voiceclone.jsonl import read_lines, write_json
+    from voiceclone.jsonl import write_json
 
-    write_json(a.report, intelligibility_report(Aligner(), a.clips, read_lines(a.sentences), a.samples,
+    write_json(a.report, intelligibility_report(Aligner(), a.clips, _maybe_lines(a.sentences), a.samples,
                                                 a.holdout, a.n_real, log=_log))
+
+
+def _maybe_lines(path):
+    from voiceclone.jsonl import read_lines
+
+    return read_lines(path) if path else None
 
 
 def cmd_trim(a):
     from voiceclone.align import Aligner
-    from voiceclone.jsonl import read_lines
     from voiceclone.postprocess import trim_to_text
 
-    _log("wrote", trim_to_text(Aligner(), a.samples, read_lines(a.sentences), a.out, a.tail, log=_log))
+    _log("wrote", trim_to_text(Aligner(), a.samples, _maybe_lines(a.sentences), a.out, a.tail, log=_log))
 
 
 def cmd_best_of(a):
     from voiceclone.align import Aligner
     from voiceclone.evaluate import best_of
-    from voiceclone.jsonl import read_lines, write_json
+    from voiceclone.jsonl import write_json
     from voiceclone.speaker import SpeakerEncoder
 
     enc = SpeakerEncoder(a.ecapa_dir)
     cent = enc.centroid_from_clips(a.clips, a.n_enroll, shuffle_seed=0)
-    rep = best_of(enc, Aligner(), cent, a.takes, read_lines(a.sentences), a.out, a.pick, a.max_cer, log=_log)
+    rep = best_of(enc, Aligner(), cent, a.takes, a.out, _maybe_lines(a.sentences), a.pick, a.max_cer, log=_log)
     write_json(Path(a.out) / "selection.json", rep)
 
 
@@ -258,6 +264,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--app", default=str(Path.home() / "Applications/Audacity 3.7.app"))
     p.add_argument("--reuse-chunks", default=None, help="re-cut chunks at this folder's times, keep transcripts")
     p.add_argument("--chunks-out", default=None)
+    p.add_argument("--force-restart", action="store_true",
+                   help="quit an already-open Audacity first (its unsaved changes are lost)")
 
     # model
     def gen(p, min_sps=2.0):
@@ -285,6 +293,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--grad-accum", type=int, default=4); p.add_argument("--holdout", type=int, default=6)
     p.add_argument("--max-steps", type=int, default=0); p.add_argument("--seed", type=int, default=0)
     p.add_argument("--init-adapter", default=None, help="continue training this saved LoRA")
+    p.add_argument("--save-every", type=int, default=50,
+                   help="keep a checkpoint-NNNNN/ adapter every N steps (0 = final only)")
 
     p = add("long-form", cmd_long_form, "Re-voice minutes of a real recording with the same words")
     p.add_argument("--lora", required=True); p.add_argument("--model", default=DEFAULT_MODEL)
@@ -302,14 +312,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("eval-intelligibility", cmd_eval_intelligibility, "Character error of samples vs real clips")
     p.add_argument("--clips", required=True); p.add_argument("--samples", action="append", default=[])
-    p.add_argument("--sentences", default="examples/test_sentences_kn.txt")
+    p.add_argument("--sentences", default=None, help="only needed for sample folders without log.json")
     p.add_argument("--holdout", default=None, help="holdout.json written by train")
     p.add_argument("--n-real", type=int, default=10)
     p.add_argument("--report", default="outputs/intelligibility_report.json")
 
     p = add("trim", cmd_trim, "Cut each sample just after the last word of its sentence")
     p.add_argument("--samples", required=True); p.add_argument("--out", default=None)
-    p.add_argument("--sentences", default="examples/test_sentences_kn.txt")
+    p.add_argument("--sentences", default=None, help="only needed if the samples have no log.json")
     p.add_argument("--tail", type=float, default=0.3)
 
     p = add("best-of", cmd_best_of, "Pick the best of several takes per sentence")
@@ -317,7 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--clips", required=True, help="speaker clips for the voiceprint")
     p.add_argument("--n-enroll", type=int, default=100); p.add_argument("--max-cer", type=float, default=0.85)
     p.add_argument("--pick", choices=["gated", "voice"], default="gated")
-    p.add_argument("--sentences", default="examples/test_sentences_kn.txt"); ecapa(p)
+    p.add_argument("--sentences", default=None, help="only needed for take folders without log.json")
+    ecapa(p)
     return ap
 
 

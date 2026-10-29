@@ -35,8 +35,18 @@ in the same "reference-swap" prompt format the model uses at inference.
   4 has no scripting. Enable `mod-script-pipe` under Preferences, Modules,
   then restart Audacity. The `audacity-denoise` step currently assumes
   macOS and `~/Applications/Audacity 3.7.app`; pass `--app` for another path.
+  It quits and relaunches Audacity for every file, so it refuses to start
+  while Audacity is open unless you pass `--force-restart`.
 - A second Python environment for ClearerVoice neural denoising, because
   `clearvoice` needs `numpy<2` (see Installation).
+
+**Languages**
+- Text in Kannada, Telugu, Tamil, Malayalam, Devanagari (Hindi, Marathi,
+  Sanskrit, Nepali), Bengali/Assamese, Gujarati, Gurmukhi and Odia is
+  transliterated for alignment, length limits and scoring. Only Kannada has
+  been tested end to end. Text in other scripts, such as Urdu, can still be
+  synthesised, but only with the 20-second length cap, and the alignment-based
+  steps cannot use it.
 
 **Recordings**
 - At least 10 to 20 minutes of the target speaker after cleaning. The
@@ -51,10 +61,14 @@ in the same "reference-swap" prompt format the model uses at inference.
 git clone https://github.com/svayatta/indic-voice-clone.git
 cd indic-voice-clone
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -e ".[all]"
+uv pip install --python .venv/bin/python -e ".[all]" -c constraints.txt
 source .venv/bin/activate
 voiceclone --help
 ```
+
+`constraints.txt` pins the exact versions behind the reference results
+(Python 3.12, macOS arm64). Leave it out to take the newest releases, at
+the risk of behaviour changes.
 
 The extras are `tts` for synthesis and training, `align` for forced
 alignment and character error, `speaker` for voiceprints, `asr` for
@@ -111,7 +125,10 @@ voiceclone build-clips --vad data/vad_talk --enroll data/enroll --n-enroll 10 --
 Repeat `--vad` to combine several prepared recordings.
 
 **4. Fine-tune.** Six clips are held out for evaluation and listed in
-`models/lora/holdout.json`.
+`models/lora/holdout.json`. The final adapter is saved in `models/lora/`,
+and every 50 optimizer steps a copy is kept in `models/lora/checkpoint-NNNNN/`
+(about 100 MB each), so you can go back to an earlier one if it sounds
+better. Change the interval with `--save-every`.
 
 ```bash
 voiceclone train --clips data/clips --out models/lora --epochs 2
@@ -150,7 +167,9 @@ similarity and the clone scored 0.61 to 0.72. Numbers do not judge accent, thoug
 speakers of the dialect listen.
 
 **7. Improve (optional).** Generate several takes with different `--seed`
-values and keep the best one per sentence with `best-of`. Add more
+values and keep the best one per sentence with `best-of`. It pairs takes by
+the sentence recorded in each folder's `log.json`, so folders made from
+differently ordered sentence files still compare correctly. Add more
 recordings with `prepare`, then retrain or continue training with
 `train --init-adapter models/lora --lr 1e-4`.
 

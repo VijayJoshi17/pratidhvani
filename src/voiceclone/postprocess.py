@@ -11,7 +11,7 @@ from voiceclone.evaluate import sample_texts
 from voiceclone.text import star_tokens
 
 
-def trim_to_text(aligner, sample_dir, sentences: list[str], out_dir=None, tail: float = 0.3, log=print) -> Path:
+def trim_to_text(aligner, sample_dir, sentences: list[str] | None = None, out_dir=None, tail: float = 0.3, log=print) -> Path:
     import librosa
     import soundfile as sf
 
@@ -28,4 +28,8 @@ def trim_to_text(aligner, sample_dir, sentences: list[str], out_dir=None, tail: 
             end = min(end, words[-1]["end"] + tail)
         write_wav(dst / name, wav[: int(end * sr)], sr)
         log(f"{name}: {len(wav)/sr:.1f}s -> {end:.1f}s | {text[:50]}")
+    if (src / "log.json").exists():          # keep each sample's text with the trimmed copy
+        import shutil
+
+        shutil.copy(src / "log.json", dst / "log.json")
     return dst

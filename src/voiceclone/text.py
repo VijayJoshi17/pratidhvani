@@ -1,10 +1,17 @@
-"""Kannada text utilities: transliteration, syllable counts, CER, aligner tokens.
+"""Indic text utilities: transliteration, syllable counts, CER, aligner tokens.
 
-The aligner's default romanizer (unidecode) drops Kannada's inherent vowel,
-so "ನಿಮ್ಮ ಮನೆ" becomes "nimm mne". `translit` keeps the inherent 'a' unless a
+The aligner's default romanizer (unidecode) drops the inherent vowel, so
+"ನಿಮ್ಮ ಮನೆ" becomes "nimm mne". `translit` keeps the inherent 'a' unless a
 virama or vowel sign follows, and outputs only a-z for the MMS CTC vocabulary.
+
+Other Brahmic scripts are handled by mapping them into the Kannada block
+first: Unicode lays out Devanagari, Bengali, Gurmukhi, Gujarati, Odia, Tamil,
+Telugu, Kannada and Malayalam in parallel 128-codepoint blocks, so the same
+offset is the same letter or sign. Scripts outside these blocks (for example
+Urdu) transliterate to an empty string.
 """
 import re
+import unicodedata
 
 V = {"ಅ": "a", "ಆ": "aa", "ಇ": "i", "ಈ": "ii", "ಉ": "u", "ಊ": "uu", "ಋ": "ru", "ಎ": "e", "ಏ": "ee",
      "ಐ": "ai", "ಒ": "o", "ಓ": "oo", "ಔ": "au"}
@@ -17,8 +24,44 @@ C = {"ಕ": "k", "ಖ": "kh", "ಗ": "g", "ಘ": "gh", "ಙ": "n", "ಚ": "ch", 
 VIRAMA, ANUSVARA, VISARGA, NUKTA = "್", "ಂ", "ಃ", "಼"
 STAR = "<star>"
 
+KANNADA_BLOCK = 0x0C80
+BRAHMIC_BLOCKS = (0x0900, 0x0980, 0x0A00, 0x0A80, 0x0B00, 0x0B80, 0x0C00, 0x0D00)
+NUKTA_OFFSET = 0x3C
+# Devanagari candra vowels have no Kannada counterpart at the same offset
+CANDRA = {"\u090D": "ಎ", "\u0911": "ಒ", "\u0945": "ೆ", "\u0949": "ೊ"}
+
+
+def _decompose_nukta(ch: str) -> str:
+    """Split precomposed nukta letters (क़ -> क + ़) and nothing else.
+
+    Full NFD would also split Tamil, Malayalam and Bengali two-part vowel
+    signs (ோ -> ெ + ா), which would then transliterate as the wrong vowel.
+    """
+    d = unicodedata.decomposition(ch)
+    if d and not d.startswith("<"):
+        parts = [int(x, 16) for x in d.split()]
+        if len(parts) == 2 and (parts[1] & 0x7F) == NUKTA_OFFSET:
+            return chr(parts[0]) + chr(parts[1])
+    return ch
+
+
+def to_kannada_script(text: str) -> str:
+    """Re-encode any parallel-block Brahmic script as Kannada; other characters unchanged."""
+    out = []
+    for ch in "".join(_decompose_nukta(c) for c in text):
+        if ch in CANDRA:
+            out.append(CANDRA[ch]); continue
+        c = ord(ch)
+        for base in BRAHMIC_BLOCKS:
+            if base <= c < base + 0x80:
+                ch = chr(c - base + KANNADA_BLOCK)
+                break
+        out.append(ch)
+    return "".join(out)
+
 
 def translit(word: str) -> str:
+    word = to_kannada_script(word)
     out, i, n = [], 0, len(word)
     while i < n:
         ch = word[i]

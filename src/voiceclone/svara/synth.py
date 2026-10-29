@@ -50,7 +50,12 @@ class Synthesizer:
         torch = self._torch
         torch.manual_seed(seed)
         ids = torch.tensor([build_prompt(self.tok, text, ref_tokens, ref_text)], device=self.device)
-        min_new, max_new = token_budget(syllables(text), p.max_sec, p.min_sps, p.max_sps)
+        n_syl = syllables(text)
+        if n_syl == 0:
+            import warnings
+
+            warnings.warn(f"cannot count syllables in {text[:40]!r}; only the {p.max_sec:.0f} s cap applies")
+        min_new, max_new = token_budget(n_syl, p.max_sec, p.min_sps, p.max_sps)
         with torch.inference_mode():
             # use_cache=True matters: the saved config has use_cache false, which
             # makes generate recompute the whole sequence per token (about 10x slower)

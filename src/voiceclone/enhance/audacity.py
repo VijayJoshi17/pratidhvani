@@ -79,11 +79,16 @@ def analyse_noise(y: np.ndarray, sr: int):
     return float(np.argmin(sm)) / 50, float(sm.min()), hums
 
 
-def _restart(app: Path, pipe: AudacityPipe):
+def is_running(app: Path) -> bool:
     exe = f"{app}/Contents/MacOS/Audacity"
-    subprocess.run(["pkill", "-f", exe])
+    return subprocess.run(["pgrep", "-f", exe], capture_output=True).returncode == 0
+
+
+def _restart(app: Path, pipe: AudacityPipe):
+    """Quit and relaunch Audacity: Noise Reduction keeps one profile per session."""
+    subprocess.run(["pkill", "-f", f"{app}/Contents/MacOS/Audacity"])
     for _ in range(60):
-        if subprocess.run(["pgrep", "-f", exe], capture_output=True).returncode != 0:
+        if not is_running(app):
             break
         time.sleep(0.5)
     pipe.reset()
@@ -99,12 +104,22 @@ def _restart(app: Path, pipe: AudacityPipe):
     raise RuntimeError("Audacity did not start with its script pipes after 3 attempts")
 
 
-def audacity_denoise(src, work_dir, app=DEFAULT_APP, reuse_chunks=None, chunks_out=None, log=print) -> Path:
-    """Clean `src` into work_dir/audacity_44k.wav; optionally re-cut chunks (see module doc)."""
+def audacity_denoise(src, work_dir, app=DEFAULT_APP, reuse_chunks=None, chunks_out=None,
+                     force_restart: bool = False, log=print) -> Path:
+    """Clean `src` into work_dir/audacity_44k.wav; optionally re-cut chunks (see module doc).
+
+    Audacity is quit and relaunched for every file. If it is already open when
+    this starts, it refuses to run unless `force_restart`, because quitting
+    would discard unsaved work in the open project.
+    """
     import librosa
     import soundfile as sf
 
     from voiceclone.audio import ffmpeg_decode, peak_normalize, write_wav
+
+    if is_running(Path(app)) and not force_restart:
+        raise RuntimeError("Audacity is already running. Save your work and quit it, or pass "
+                           "--force-restart to let this step quit it (unsaved changes are lost).")
 
     work = Path(work_dir); work.mkdir(parents=True, exist_ok=True)
     raw, out = work / "raw_44k.wav", work / "audacity_44k.wav"

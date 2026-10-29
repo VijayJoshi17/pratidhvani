@@ -76,3 +76,16 @@ def test_token_budget_caps_rambling_and_prevents_early_stop():
 def test_token_budget_tiny_inputs(n):
     mn, mx = token_budget(n, 20.0, 2.0, 6.0)
     assert 0 <= mn < mx
+
+
+def test_marathi_sentence_is_not_cut_to_a_syllable():
+    # regression: Devanagari used to count as 0 syllables -> 1.6 s cap
+    from voiceclone.text import syllables
+
+    _, mx = token_budget(syllables("नमस्कार, सगळे कसे आहात?"), 20.0, 2.5, 6.0)
+    assert mx / (12 * 7) > 4.0
+
+
+def test_unknown_length_falls_back_to_max_sec_cap():
+    mn, mx = token_budget(0, 20.0, 2.0, 6.0)
+    assert mn == 0 and mx == int(20.0 * 12 * 7) + 8
