@@ -9,7 +9,7 @@ from voiceclone.audio import TTS_SR, ffmpeg_decode, load_wav, restore
 
 
 def prepare_recording(src, tag: str, data_dir="data", lang: str = "kn", enhance_python: str | None = None,
-                      log=print) -> Path:
+                      enhance_wet: float = 1.0, log=print) -> Path:
     """Returns the folder with chunk WAVs, segments.jsonl and transcripts.jsonl.
 
     `enhance_python` is the interpreter of an environment with clearvoice
@@ -29,7 +29,7 @@ def prepare_recording(src, tag: str, data_dir="data", lang: str = "kn", enhance_
     if enhance_python:
         final = data / f"vad_{tag}_se"
         subprocess.run([enhance_python, "-m", "voiceclone.enhance.clearvoice", str(vad), str(final),
-                        "--steps", "se"], check=True)
+                        "--steps", "se", "--wet", str(enhance_wet)], check=True)
         shutil.copy(vad / "segments.jsonl", final)
     transcribe_dir(final, lang=lang, log=log)
     log(f"done {tag}: {final}")

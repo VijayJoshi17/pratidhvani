@@ -98,7 +98,13 @@ def cmd_rank(a):
 def cmd_prepare(a):
     from voiceclone.prepare import prepare_recording
 
-    prepare_recording(a.src, a.tag, a.data_dir, a.lang, a.enhance_python, log=_log)
+    prepare_recording(a.src, a.tag, a.data_dir, a.lang, a.enhance_python, a.enhance_wet, log=_log)
+
+
+def cmd_import_vault(a):
+    from voiceclone.vault import import_vault
+
+    _log(import_vault(a.index, a.vault_dir, a.out, a.min_dnsmos, a.min_spk, log=_log))
 
 
 def cmd_audacity(a):
@@ -258,6 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("src"); p.add_argument("tag"); p.add_argument("--lang", default="kn")
     p.add_argument("--data-dir", default="data")
     p.add_argument("--enhance-python", default=None, help="python of an env with clearvoice (numpy<2)")
+    p.add_argument("--enhance-wet", type=float, default=1.0, help="enhanced share when denoising (0.9 keeps some warmth)")
 
     p = add("audacity-denoise", cmd_audacity, "Remove hiss, mains hum and clicks with Audacity 3.x")
     p.add_argument("src"); p.add_argument("tag"); p.add_argument("--data-dir", default="data")
@@ -266,6 +273,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chunks-out", default=None)
     p.add_argument("--force-restart", action="store_true",
                    help="quit an already-open Audacity first (its unsaved changes are lost)")
+
+    p = add("import-vault", cmd_import_vault, "Import Vani-Harness cloning-vault segments as chunks")
+    p.add_argument("index", help="the vault's metadata.jsonl or vault_admitted_segments.jsonl")
+    p.add_argument("--vault-dir", required=True, help="folder holding the vault WAVs (matched by file name)")
+    p.add_argument("--out", required=True, help="new chunk folder; next run transcribe, then build-clips")
+    p.add_argument("--min-dnsmos", type=float, default=None, help="also require DNSMOS OVRL >= this")
+    p.add_argument("--min-spk", type=float, default=None, help="also require the vault's speaker cosine >= this")
 
     # model
     def gen(p, min_sps=2.0):

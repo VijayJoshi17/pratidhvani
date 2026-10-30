@@ -184,6 +184,7 @@ for every option.
 | Cut at pauses | `vad --audio clean.wav --out data/vad` | 3-10 s chunks + `segments.jsonl` |
 | Transcribe | `transcribe --vad data/vad` | `transcripts.jsonl`, verbatim, resumable |
 | Whole preparation for one file | `prepare talk.mp3 TAG` | `data/vad_TAG[_se]/` |
+| Import Vāṇī-Harness vault (optional) | `import-vault metadata.jsonl --vault-dir VAULT --out data/vault_kn` | vault clips as chunks; then `transcribe` |
 | Analogue noise (optional) | `audacity-denoise talk.mp3 TAG --reuse-chunks data/vad_TAG_se` | hiss, hum, clicks removed |
 | Rank recordings | `rank DIR --enroll data/enroll` | which talks are the speaker, how clean |
 | Build training set | `build-clips --vad data/vad --enroll data/enroll --out data/clips` | speaker- and alignment-filtered clips |
@@ -200,6 +201,38 @@ of verbatim ASR, use `parse-transcript`, `align` and `segment --speaker NAME`
 in place of `vad`, `transcribe` and `build-clips`. Its clips can also serve
 as the enrollment set. Verbatim ASR gave better results, because a cleaned-up
 transcript teaches the model words the speaker never said.
+
+## Using clips from Vāṇī-Harness
+
+Vāṇī-Harness is a companion restoration pipeline. It
+separates the voice from music and crowd noise, removes room reverberation,
+enhances, and writes admitted 3 to 15 second clips to a "cloning vault" with a
+JSON-lines index. Those clips can replace or add to step 1 of Getting started:
+
+```bash
+voiceclone import-vault path/to/vault/metadata.jsonl --vault-dir path/to/vault --out data/vault_talk
+voiceclone transcribe --vad data/vault_talk
+voiceclone build-clips --vad data/vault_talk --vad data/vad_talk --enroll data/enroll --out data/clips
+```
+
+- **Transcripts are redone.** The vault's Whisper transcripts are not imported;
+  on this archival speech they were unreliable (wrong language, repeated phrases).
+  `transcribe` produces verbatim IndicConformer text instead.
+- **Paths are matched by file name**, so the vault can be copied anywhere.
+  `--min-dnsmos` and `--min-spk` add the vault's own quality and speaker
+  scores as extra gates.
+- **Check the accent before switching.** Dereverberation and enhancement change
+  the sound the model learns. Train one adapter on vault clips and one on
+  lightly restored clips, then compare them with `eval-similarity`,
+  `eval-intelligibility` and native listeners.
+- **Clip edges.** The vault splits long speech at fixed lengths, so clips can
+  start or end mid-word. `build-clips` does not detect partial edge words yet.
+
+ClearerVoice denoising (`prepare --enhance-python`) now runs speech
+enhancement only. Super-resolution is opt-in (`--steps se,sr` when running
+`python -m voiceclone.enhance.clearvoice` directly), because on archival
+lecture audio it shifted the median formants by hundreds of hertz. Use
+`--enhance-wet 0.9` to mix 10% of the original back in, as Vāṇī-Harness does.
 
 ## Troubleshooting
 
