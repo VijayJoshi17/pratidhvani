@@ -204,6 +204,42 @@ def cmd_best_of(a):
     write_json(Path(a.out) / "selection.json", rep)
 
 
+# ---------- comparing runs ----------
+def cmd_benchmark(a):
+    from voiceclone.benchmark import LeakError, run_benchmark
+
+    try:
+        run_benchmark(a.spec, a.out, a.lora, a.model, a.allow_leak, a.train_clips, a.leaderboard, a.ecapa_dir,
+                      log=_log)
+    except LeakError as e:
+        sys.exit(f"refusing to score: {e}")
+
+
+def cmd_compare(a):
+    import json
+
+    from voiceclone.compare import compare_runs, format_report, listening_results, load_run
+    from voiceclone.jsonl import write_json
+
+    ra, rb = load_run(a.run_a), load_run(a.run_b)
+    metrics = compare_runs(ra, rb, a.n_boot)
+    listening = None
+    if a.answers:
+        if not a.key:
+            sys.exit("--answers needs --key (the .key.json written next to the listening page)")
+        listening = listening_results(json.load(open(a.key, encoding="utf-8")),
+                                      [json.load(open(f, encoding="utf-8")) for f in a.answers], a.run_a, a.run_b)
+    _log(format_report(ra, rb, metrics, listening))
+    if a.report:
+        write_json(a.report, {"a": a.run_a, "b": a.run_b, "metrics": metrics, "listening": listening})
+
+
+def cmd_listen_page(a):
+    from voiceclone.listen import write_listening_page
+
+    write_listening_page(a.run_a, a.run_b, a.out, a.check_every, a.seed, log=_log)
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="voiceclone", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -343,6 +379,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pick", choices=["gated", "voice"], default="gated")
     p.add_argument("--sentences", default=None, help="only needed for take folders without log.json")
     ecapa(p)
+
+    # comparing runs
+    p = add("benchmark", cmd_benchmark, "Score one adapter on a frozen benchmark spec")
+    p.add_argument("--spec", required=True, help="benchmark spec JSON (see examples/bench_spec.example.json)")
+    p.add_argument("--lora", default=None, help="PEFT adapter folder (omit for zero-shot)")
+    p.add_argument("--model", default=DEFAULT_MODEL)
+    p.add_argument("--out", required=True, help="run folder, e.g. outputs/bench/RUN")
+    p.add_argument("--leaderboard", default=None, help="results.jsonl to append to (default: next to --out)")
+    p.add_argument("--allow-leak", action="store_true",
+                   help="score even if the adapter trained on a benchmark recording (the row is flagged)")
+    p.add_argument("--train-clips", action="append", default=None,
+                   help="clip folder(s) the adapter trained on, if its train_log.json cannot say")
+    ecapa(p)
+
+    p = add("compare", cmd_compare, "Is benchmark run B better than run A? (paired takes, bootstrap interval)")
+    p.add_argument("run_a"); p.add_argument("run_b")
+    p.add_argument("--answers", action="append", default=[], help="listening-page answers JSON (repeatable)")
+    p.add_argument("--key", default=None, help="the listening page's .key.json")
+    p.add_argument("--n-boot", type=int, default=10000)
+    p.add_argument("--report", default=None, help="also write the comparison as JSON")
+
+    p = add("listen-page", cmd_listen_page, "Blind A/B listening page for two benchmark runs")
+    p.add_argument("run_a"); p.add_argument("run_b")
+    p.add_argument("--out", required=True, help="HTML file; its .key.json is written next to it")
+    p.add_argument("--check-every", type=int, default=6, help="one hidden real-clip check per N trials (0 = none)")
+    p.add_argument("--seed", type=int, default=0)
     return ap
 
 
