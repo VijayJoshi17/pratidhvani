@@ -173,6 +173,108 @@ differently ordered sentence files still compare correctly. Add more
 recordings with `prepare`, then retrain or continue training with
 `train --init-adapter models/lora --lr 1e-4`.
 
+## Comparing runs
+
+`eval-similarity` and `eval-intelligibility` say how one folder of samples
+scores. To decide whether one adapter (or training recipe) is better than
+another, the scores must come from the same test: the same held-out speech,
+the same reference clip, the same sentences and seeds. `benchmark` fixes all
+of that in a spec file and refuses adapters that trained on the test audio.
+
+**1. Hold out whole recordings.** Similarity differs between clips of the
+same session and clips of another session, and an adapter that trained on a
+recording has heard its room, microphone and words. So hold out complete
+recordings, not clips. Prepare one or
+two recordings that no adapter will train on and build their clips into a
+folder of their own:
+
+```bash
+voiceclone prepare talk9.mp3 TALK9 --lang kn
+voiceclone build-clips --vad data/vad_TALK9 --enroll data/enroll --out data/clips_holdout
+```
+
+**2. Write the spec.** Copy `examples/bench_spec.example.json` (outside
+git, for example to `data/bench.json`) and fill in the held-out clip folder,
+the recording names in `holdout.sources`, and a conditioning clip with its
+exact text. A recording's name is a clip's `source` field (kept by
+`import-vault`), or else its file name without the chunk number: `prepare`
+names chunks `TAG_NNNN.wav`, so the recording is `TAG`. The sentences are
+stored in the spec itself, and the spec's hash is stored with every result,
+so editing a spec starts a new benchmark rather than silently changing an
+old one. `seeds` (default 0, 1, 2) sets how many takes each sentence gets.
+
+**3. Run each adapter.**
+
+```bash
+voiceclone benchmark --spec data/bench.json --lora models/lora --out outputs/bench/lora
+voiceclone benchmark --spec data/bench.json --lora models/lora_v2/checkpoint-00150 --out outputs/bench/v2_150
+voiceclone benchmark --spec data/bench.json --out outputs/bench/zeroshot
+```
+
+Each run writes `seed_S/sample_XX.wav` (with `log.json`, so `trim` and
+`best-of` work on them), `spec.json` and `scores.json`, and appends one row
+to `outputs/bench/results.jsonl`: the adapter, its training parameters and
+the recordings it trained on, and the scores. A run that is interrupted
+resumes where it stopped. Six sentences and three seeds are 18 takes, about
+10 to 25 minutes on an M5.
+
+Scores per take, each also given for the speaker's real held-out clips:
+
+| Score | Meaning | Better |
+|---|---|---|
+| `sim` | ECAPA cosine to the held-out voiceprint; each real clip is scored against the other held-out clips | higher |
+| `cer` | character error of the MMS recogniser's decode | lower |
+| `len_ratio` | length against 3.2 syllables/s; `len_err` is how far it is from the speaker's own ratio | closer to real |
+| `stopped` | generation ended by itself, not at the length cap | higher |
+
+The relative scores divide by the real clips' value: `sim` 90% means the
+clone is 90% as close to the voiceprint as his own recordings are. A take
+with no audio scores as no voice and nothing heard instead of being dropped.
+
+Before synthesizing anything, `benchmark` reads the adapter's
+`train_log.json` (a `checkpoint-NNNNN/` uses its run folder's), the clip
+folder it names and its `metadata.jsonl`, and follows `--init-adapter`
+chains. If a held-out recording or the conditioning clip's recording is
+among the training clips, or the training data cannot be found, it refuses.
+`--train-clips DIR` names the training clips when the log's relative path
+does not resolve from here; `--allow-leak` scores anyway and flags the row.
+
+**4. Compare two runs.**
+
+```bash
+voiceclone compare outputs/bench/lora outputs/bench/v2_150
+```
+
+Takes are paired by sentence and seed, and the mean difference (B minus A)
+gets a 95% bootstrap interval that resamples whole sentences. A metric says
+`B better` or `A better` only when its interval excludes zero; otherwise it
+says `no clear difference`, which with six sentences is a common and honest
+answer. Add sentences to the spec, as a new benchmark, to resolve smaller
+differences.
+
+**5. Listen blind.** Numbers do not judge accent, so ask native speakers:
+
+```bash
+voiceclone listen-page outputs/bench/lora outputs/bench/v2_150 --out outputs/bench/listen.html
+```
+
+This writes one self-contained HTML file (the audio is embedded, roughly 10
+to 20 MB for 18 takes per run) and `listen.key.json`. Send only the HTML. For each
+sentence and seed it plays the two runs' takes as 1 and 2 in random order and
+asks which sounds more like him and which sounds like natural northern
+Kannada; about one trial in six is a hidden check that pairs a real held-out
+recording with a clone. The listener downloads their answers as JSON. Keep
+the key file to yourself, and score the answers with:
+
+```bash
+voiceclone compare outputs/bench/lora outputs/bench/v2_150 \
+    --key outputs/bench/listen.key.json --answers answers_X.json --answers answers_Y.json
+```
+
+This adds B's win rate per question with a 95% interval, and how often each
+listener picked the real recording in the checks. A listener who cannot pick
+out the real recording is guessing, so weigh their answers accordingly.
+
 ## Command reference
 
 All steps are subcommands of `voiceclone`; run `voiceclone <step> --help`
@@ -195,6 +297,9 @@ for every option.
 | Voice similarity | `eval-similarity --clips data/clips --samples outputs/synth` | ECAPA cosine vs real clips |
 | Intelligibility | `eval-intelligibility --clips data/clips --samples outputs/synth` | character error vs real clips |
 | Same-words test | `long-form --lora models/lora --chunks data/vad_X --source X.wav --ref clip.wav --ref-text-file ref.txt --out outputs/long` | clone vs original, A/B file |
+| Benchmark a run | `benchmark --spec data/bench.json --lora models/lora --out outputs/bench/lora` | scores + `results.jsonl` row |
+| Compare two runs | `compare outputs/bench/A outputs/bench/B` | paired differences, 95% interval |
+| Blind listening | `listen-page outputs/bench/A outputs/bench/B --out listen.html` | A/B page + answer key |
 
 If you have a timed human transcript (`[SS:MM:00] [Speaker] : text`) instead
 of verbatim ASR, use `parse-transcript`, `align` and `segment --speaker NAME`
@@ -282,6 +387,9 @@ src/voiceclone/
   svara/synth.py  Synthesizer (zero-shot or LoRA)
   train.py        reference-swap LoRA fine-tuning
   evaluate.py     similarity, intelligibility, best-of selection
+  benchmark.py    frozen benchmark spec, leakage guard, scoring, leaderboard
+  compare.py      paired bootstrap comparison and listening win rates
+  listen.py       blind A/B listening page
   postprocess.py  trim to text
   longform.py     same-words re-voicing
   enhance/        ClearerVoice and Audacity 3.x denoisers
@@ -311,4 +419,5 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 ```
 
 The unit tests cover transliteration, transcript parsing, the Svara token and
-prompt layout, pause segmentation and take selection. They need no models.
+prompt layout, pause segmentation, take selection, the benchmark's leakage
+guard, paired comparison and listening page. They need no models.
