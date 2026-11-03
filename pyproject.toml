@@ -15,8 +15,9 @@ tts = ["torch", "transformers", "accelerate", "peft", "snac", "safetensors", "hu
 align = ["ctc-forced-aligner", "onnxruntime==1.20.1", "unidecode"]
 speaker = ["torch", "torchaudio", "speechbrain"]
 asr = ["torch", "torchaudio", "transformers"]
-all = ["indic-voice-clone[tts,align,speaker,asr]"]
-dev = ["pytest"]
+web = ["fastapi", "uvicorn", "python-multipart"]
+all = ["indic-voice-clone[tts,align,speaker,asr,web]"]
+dev = ["pytest", "httpx2", "indic-voice-clone[web]"]
 # ClearerVoice pins numpy<2: install `clearvoice` in a separate environment
 # and pass its python to `voiceclone prepare --enhance-python`.
 
