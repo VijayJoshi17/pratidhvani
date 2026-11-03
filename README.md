@@ -195,6 +195,31 @@ Voices are kept under `studio/voices/<id>/`: the upload, `clean.wav`,
 because the 3B model and training do not fit in memory together. The server
 listens on this computer only unless you pass `--host`.
 
+## Docker
+
+Each merge to `main` publishes an image for linux/amd64 and linux/arm64 to
+`ghcr.io/svayatta/indic-voice-clone` (`latest` plus a `sha-…` tag per
+commit). It runs the voice studio by default:
+
+```bash
+docker run --rm -p 127.0.0.1:8000:8000 -v voiceclone:/data -e HF_TOKEN ghcr.io/svayatta/indic-voice-clone
+```
+
+Open http://127.0.0.1:8000. Everything the container writes goes into the
+`voiceclone` volume: voices, downloaded models and the Hugging Face cache.
+`HF_TOKEN` must be able to read the gated IndicConformer model. Any other
+`voiceclone` command runs the same way, for example
+`docker run --rm -v voiceclone:/data ghcr.io/svayatta/indic-voice-clone benchmark --help`.
+
+The image uses CPU-only torch. Docker on a Mac cannot use the Apple GPU, and
+the CUDA build would triple the size. Cleaning and transcription are fine on
+CPU, but synthesis with the 3B model takes minutes per sentence, and training
+is impractical. Train with a native install on Apple silicon or an NVIDIA GPU.
+
+While the repository is private, the image is private too: log in with
+`docker login ghcr.io` using a token with `read:packages`, or make the package
+public in its GitHub settings.
+
 ## Comparing runs
 
 `eval-similarity` and `eval-intelligibility` say how one folder of samples
