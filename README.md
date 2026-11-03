@@ -173,6 +173,28 @@ differently ordered sentence files still compare correctly. Add more
 recordings with `prepare`, then retrain or continue training with
 `train --init-adapter models/lora --lr 1e-4`.
 
+## Voice studio (web app)
+
+A local web page for the whole flow: name a voice, drop a 5-45 s sample or
+record one in the browser, and the server cleans it (the same ffmpeg
+restoration as `prepare`, plus MossFormer2 when `--enhance-python` is given),
+picks the clearest 3-10 s stretch as the reference, transcribes it verbatim
+and makes an instant clone you can type text for. You can hear the upload and
+the cleaned audio side by side, and correct the reference words. With longer
+recordings of the same person (8 minutes or more of their speech alone), it
+also trains a LoRA clone. The sample decides which voice to keep, other
+speakers are filtered out, and previews then use the trained adapter.
+
+```bash
+uv pip install --python .venv/bin/python -e ".[all]" -c constraints.txt
+voiceclone serve --root studio            # http://127.0.0.1:8000
+```
+
+Voices are kept under `studio/voices/<id>/`: the upload, `clean.wav`,
+`reference.wav`, previews and training output. Jobs run one at a time,
+because the 3B model and training do not fit in memory together. The server
+listens on this computer only unless you pass `--host`.
+
 ## Comparing runs
 
 `eval-similarity` and `eval-intelligibility` say how one folder of samples
@@ -300,6 +322,9 @@ for every option.
 | Benchmark a run | `benchmark --spec data/bench.json --lora models/lora --out outputs/bench/lora` | scores + `results.jsonl` row |
 | Compare two runs | `compare outputs/bench/A outputs/bench/B` | paired differences, 95% interval |
 | Blind listening | `listen-page outputs/bench/A outputs/bench/B --out listen.html` | A/B page + answer key |
+| Run a recipe | `run-recipe --recipe ci/recipe.json --data DATA --work RUN --spec DATA/bench.json` | adapter + benchmark run |
+| Quality gate | `gate MAIN_RUN PR_RUN [--require-improvement]` | pass/fail + Markdown report |
+| Web app | `serve --root studio` | the voice studio on port 8000 |
 
 If you have a timed human transcript (`[SS:MM:00] [Speaker] : text`) instead
 of verbatim ASR, use `parse-transcript`, `align` and `segment --speaker NAME`
@@ -393,7 +418,11 @@ src/voiceclone/
   postprocess.py  trim to text
   longform.py     same-words re-voicing
   enhance/        ClearerVoice and Audacity 3.x denoisers
+  recipe.py       ci/recipe.json: the pipeline the quality gate runs
+  gate.py         pass/fail rules for a candidate against main
+  studio/         the web app: upload, cleaning, previews, training jobs
   cli.py          the `voiceclone` command
+ci/               hygiene check, gate script and runner notes
 ```
 
 ## Models and licences
@@ -414,10 +443,21 @@ weights.
 ## Tests
 
 ```bash
-uv pip install --python .venv/bin/python -e ".[dev]"
+uv pip install --python .venv/bin/python -e ".[dev]" -c constraints.txt
 .venv/bin/python -m pytest
+.venv/bin/python ci/check_hygiene.py
 ```
 
 The unit tests cover transliteration, transcript parsing, the Svara token and
 prompt layout, pause segmentation, take selection, the benchmark's leakage
-guard, paired comparison and listening page. They need no models.
+guard, paired comparison and listening page, the gate's rules, recipe checks
+and the studio's API. They need no models (the cleaning tests need ffmpeg).
+
+## Contributing and the quality gate
+
+Every pull request runs `ci` (tests and repository rules) on GitHub. Changes
+that can affect the voice also go through `quality-gate`, which trains and
+benchmarks the pull request's recipe with the real model on a self-hosted
+runner and fails if any metric is worse than main. Experiments must also show
+an improvement. See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules and
+[ci/README.md](ci/README.md) for the runner.

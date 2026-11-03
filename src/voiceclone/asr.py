@@ -25,8 +25,11 @@ class IndicConformer:
         return text.strip()
 
 
-def transcribe_dir(vad_dir, lang: str = "kn", limit: int = 0, log=print) -> Path:
-    """Append {file, text} to vad_dir/transcripts.jsonl for every chunk not yet done (resumable)."""
+def transcribe_dir(vad_dir, lang: str = "kn", limit: int = 0, log=print, asr=None) -> Path:
+    """Append {file, text} to vad_dir/transcripts.jsonl for every chunk not yet done (resumable).
+
+    `asr` reuses an already loaded IndicConformer (the model is 600M parameters).
+    """
     import json
 
     import soundfile as sf
@@ -35,7 +38,7 @@ def transcribe_dir(vad_dir, lang: str = "kn", limit: int = 0, log=print) -> Path
     out = vad / "transcripts.jsonl"
     done = {r["file"] for r in read_jsonl(out)} if out.exists() else set()
     segs = read_jsonl(vad / "segments.jsonl")
-    asr = IndicConformer()
+    asr = asr or IndicConformer()
     with open(out, "a", encoding="utf-8") as f:
         for s in segs[: limit or len(segs)]:
             if s["file"] in done:
