@@ -7,6 +7,7 @@ with recordings; once trained, previews use the trained adapter; a server
 restart never leaves a job looking busy forever.
 """
 import io
+import json
 import shutil
 
 import numpy as np
@@ -39,11 +40,13 @@ def wav_bytes(sec):
 class FakeEngine:
     min_train_minutes = 8.0
 
+    capabilities = set()
+
     def __init__(self):
         self.cleaned, self.transcribed, self.synth_calls, self.trained = [], [], [], []
 
-    def clean(self, src, dst):
-        self.cleaned.append(src)
+    def clean(self, src, dst, opts=None):
+        self.cleaned.append((src, opts))
         shutil.copy(src, dst)
         return dst
 
@@ -51,14 +54,14 @@ class FakeEngine:
         self.transcribed.append((wav, lang))
         return "ನಮಸ್ಕಾರ ರೀ"
 
-    def synthesize(self, text, ref_wav, ref_text, lora=None, seed=0):
-        self.synth_calls.append({"text": text, "ref_text": ref_text, "lora": lora, "seed": seed})
+    def synthesize(self, text, ref_wav, ref_text, lora=None, seed=0, params=None):
+        self.synth_calls.append({"text": text, "ref_text": ref_text, "lora": lora, "seed": seed, "params": params})
         return np.zeros(SR, np.float32), 84
 
-    def train(self, sample_wav, recordings, work, lang, log=print):
+    def train(self, sample_wav, recordings, work, lang, log=print, clean_opts=None, opts=None):
         log("usable speech: 12.5 min ({})")
         log("training the LoRA adapter")
-        self.trained.append(list(recordings))
+        self.trained.append({"recordings": list(recordings), "clean_opts": clean_opts, "opts": opts})
         (work / "adapter").mkdir(parents=True)
         return work / "adapter"
 
@@ -138,10 +141,11 @@ def test_preview_uses_reference_words_and_is_served(env):
     vid = create(client).json()["id"]
     assert client.post(f"/api/voices/{vid}/previews", json={"text": "ನಮಸ್ಕಾರ"}).status_code == 409   # not ready yet
     drain()
-    p = client.post(f"/api/voices/{vid}/previews", json={"text": "ಮಕ್ಕಳಿಗೆ ಚಲೋ ವಿದ್ಯೆ ಕೊಡ್ರಿ", "seed": 2}).json()
+    p = client.post(f"/api/voices/{vid}/previews", json={"text": "ಮಕ್ಕಳಿಗೆ ಚಲೋ ವಿದ್ಯೆ ಕೊಡ್ರಿ", "options": {"seed": 2}}).json()[0]
     drain()
     call = engine.synth_calls[-1]
-    assert call == {"text": "ಮಕ್ಕಳಿಗೆ ಚಲೋ ವಿದ್ಯೆ ಕೊಡ್ರಿ", "ref_text": "ನಮಸ್ಕಾರ ರೀ", "lora": None, "seed": 2}
+    assert {k: call[k] for k in ("text", "ref_text", "lora", "seed")} == \
+        {"text": "ಮಕ್ಕಳಿಗೆ ಚಲೋ ವಿದ್ಯೆ ಕೊಡ್ರಿ", "ref_text": "ನಮಸ್ಕಾರ ರೀ", "lora": None, "seed": 2}
     v = client.get(f"/api/voices/{vid}").json()
     assert v["previews"][0]["status"] == "done"
     assert client.get(f"/api/voices/{vid}/audio/preview", params={"id": p["id"]}).status_code == 200
@@ -170,7 +174,7 @@ def test_training_needs_recordings_then_previews_use_the_adapter(env):
     drain()
     v = client.get(f"/api/voices/{vid}").json()
     assert v["train"]["status"] == "trained" and v["train"]["speech_min"] == 12.5
-    assert [p.name for p in engine.trained[0]] == ["000_talk_one.wav", "001_b.mp3"]
+    assert [p.name for p in engine.trained[0]["recordings"]] == ["000_talk_one.wav", "001_b.mp3"]
     client.post(f"/api/voices/{vid}/previews", json={"text": "ನಮಸ್ಕಾರ"})
     drain()
     assert engine.synth_calls[-1]["lora"] == v["train"]["adapter"]
@@ -215,3 +219,98 @@ def test_delete_and_page(env):
     assert client.get("/").status_code == 200 and "Voice studio" in client.get("/").text
     assert client.delete(f"/api/voices/{vid}").status_code == 204
     assert client.get(f"/api/voices/{vid}").status_code == 404
+
+
+# ---------- options ----------
+def test_options_default_and_are_recorded(env):
+    client, _, engine, drain = env
+    vid = create(client).json()["id"]
+    drain()
+    v = client.get(f"/api/voices/{vid}").json()
+    assert v["options"]["clean"]["denoise"] is True and v["options"]["reference"]["mode"] == "auto"
+    assert engine.cleaned[0][1] == v["options"]["clean"]
+
+
+def test_chosen_cleaning_options_reach_the_cleaner(env):
+    client, _, engine, drain = env
+    o = {"clean": {"denoise": False, "highpass_hz": 80}, "reference": {"mode": "whole"}}
+    vid = create(client, options=json.dumps(o)).json()["id"]
+    drain()
+    used = engine.cleaned[0][1]
+    assert used["denoise"] is False and used["highpass_hz"] == 80 and used["declip"] is True
+    assert client.get(f"/api/voices/{vid}").json()["status"] == "ready"
+
+
+@pytest.mark.parametrize("o", [{"clean": {"highpass_hz": 5}},          # below the allowed range
+                               {"clean": {"denoise": "yes"}},          # not a bool
+                               {"clean": {"loudness": True}},          # unknown option
+                               {"reference": {"mode": "middle"}}])
+def test_bad_options_are_refused_and_leave_nothing(env, o):
+    client, studio, _, _ = env
+    r = create(client, options=json.dumps(o))
+    assert r.status_code == 400
+    assert studio.store.list() == []
+
+
+def test_enhancement_is_off_when_the_server_cannot_run_it(env):
+    # the page greys it out, and a direct request cannot switch it on either
+    client, _, engine, drain = env
+    create(client, options=json.dumps({"clean": {"enhance": True}}))
+    drain()
+    assert engine.cleaned[0][1]["enhance"] is False
+    cfg = client.get("/api/config").json()["options"]["clean"]["fields"]
+    assert next(f for f in cfg if f["key"] == "enhance")["available"] is False
+
+
+def test_takes_seeds_and_generation_settings(env):
+    client, _, engine, drain = env
+    vid = create(client).json()["id"]
+    drain()
+    ps = client.post(f"/api/voices/{vid}/previews",
+                     json={"text": "ನಮಸ್ಕಾರ", "options": {"takes": 3, "seed": 10, "temperature": 0.8}}).json()
+    assert [p["seed"] for p in ps] == [10, 11, 12]
+    drain()
+    assert [c["seed"] for c in engine.synth_calls] == [10, 11, 12]
+    assert all(c["params"]["temperature"] == 0.8 and c["params"]["top_p"] == 0.95 for c in engine.synth_calls)
+    assert client.post(f"/api/voices/{vid}/previews", json={"text": "x", "options": {"takes": 9}}).status_code == 400
+
+
+def test_trained_clone_can_be_switched_off_for_comparison(env):
+    client, _, engine, drain = env
+    vid = create(client).json()["id"]
+    drain()
+    client.post(f"/api/voices/{vid}/recordings", files=[("files", ("a.wav", wav_bytes(6), "audio/wav"))])
+    client.post(f"/api/voices/{vid}/train")
+    drain()
+    client.post(f"/api/voices/{vid}/previews", json={"text": "ನಮಸ್ಕಾರ", "options": {"trained": False}})
+    drain()
+    assert engine.synth_calls[-1]["lora"] is None
+
+
+def test_training_options_and_the_voices_cleaning_reach_training(env):
+    client, _, engine, drain = env
+    vid = create(client, options=json.dumps({"clean": {"denoise": False}})).json()["id"]
+    drain()
+    client.post(f"/api/voices/{vid}/recordings", files=[("files", ("a.wav", wav_bytes(6), "audio/wav"))])
+    bad = {"options": {"pitch_gate": True, "min_f0": 200, "max_f0": 150}}
+    assert client.post(f"/api/voices/{vid}/train", json=bad).status_code == 400
+    r = client.post(f"/api/voices/{vid}/train", json={"options": {"epochs": 5, "rank": "32", "pitch_gate": True}})
+    assert r.status_code == 202
+    drain()
+    t = engine.trained[0]
+    assert t["opts"]["epochs"] == 5 and t["opts"]["rank"] == "32" and t["opts"]["pitch_gate"] is True
+    assert t["clean_opts"]["denoise"] is False      # recordings are cleaned like the sample
+
+
+def test_reclean_uses_new_options_and_retranscribes(env):
+    client, _, engine, drain = env
+    vid = create(client, ref_text="ಇವತ್ತು ಸಂಜೆ").json()["id"]
+    drain()
+    assert engine.transcribed == []
+    r = client.post(f"/api/voices/{vid}/clean", json={"clean": {"declip": False}, "reference": {"mode": "whole"}})
+    assert r.status_code == 202
+    assert client.post(f"/api/voices/{vid}/clean", json={}).status_code == 409    # already queued
+    drain()
+    v = client.get(f"/api/voices/{vid}").json()
+    assert engine.cleaned[-1][1]["declip"] is False and v["options"]["reference"]["mode"] == "whole"
+    assert len(engine.transcribed) == 1 and v["ref_text_by"] == "asr"   # the reference may have changed

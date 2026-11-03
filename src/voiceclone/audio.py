@@ -52,10 +52,11 @@ def ffmpeg_decode(src, dst, sr: int = 48000) -> Path:
     return Path(dst)
 
 
-def restore(src, dst, sr: int = TTS_SR) -> Path:
-    """Light restoration (see RESTORE_FILTER), output mono at the TTS rate."""
+def restore(src, dst, sr: int = TTS_SR, chain: str = RESTORE_FILTER) -> Path:
+    """Light restoration (see RESTORE_FILTER, or an ffmpeg filter `chain`), output mono at the TTS rate."""
     Path(dst).parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-af", f"{RESTORE_FILTER},aresample={sr}",
+    af = f"{chain},aresample={sr}" if chain else f"aresample={sr}"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-af", af,
                     "-ac", "1", "-c:a", "pcm_s16le", str(dst)], check=True)
     return Path(dst)
 

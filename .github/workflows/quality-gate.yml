@@ -9,14 +9,11 @@ name: quality-gate
 #   - the label is removed afterwards: new commits need a new review and label;
 #   - the job on the runner has a read-only token; posting the result happens
 #     in a separate job on GitHub's machines.
-# A push to main scores main once, so later pull requests reuse it.
+# main is scored when a gated pull request first needs it (then cached), or
+# ahead of time with Run workflow. Merges never start a multi-hour run by themselves.
 on:
   pull_request_target:
     types: [labeled]
-  push:
-    branches: [main]
-    # only what the score depends on (ci/gate.sh's run key); docs and CI changes need no new baseline
-    paths: ["src/**", pyproject.toml, constraints.txt, ci/recipe.json, ci/gate.sh]
   workflow_dispatch:
 
 permissions:

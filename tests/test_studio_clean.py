@@ -48,3 +48,32 @@ def test_reference_is_the_longest_chunk(tmp_path):
     sf.write(tmp_path / "clean.wav", x.astype(np.float32), sr)
     ref = pick_reference(tmp_path / "clean.wav", tmp_path / "ref.wav", tmp_path / "work")
     assert 7.0 < duration(ref) < 9.0
+
+
+def test_default_options_are_the_tested_restoration_chain():
+    # the defaults must stay the chain the reference results were produced with
+    from voiceclone.audio import RESTORE_FILTER
+    from voiceclone.studio.clean import restore_chain
+    from voiceclone.studio.options import defaults
+
+    assert restore_chain(defaults("clean")) == RESTORE_FILTER
+
+
+def test_every_step_can_be_switched_off(tmp_path):
+    from voiceclone.studio.clean import restore_chain
+    from voiceclone.studio.options import defaults
+
+    off = {**defaults("clean"), "declip": False, "highpass": False, "denoise": False, "normalize": False}
+    assert restore_chain(off) == ""
+    sr = 24000
+    x = (0.1 * np.sin(2 * np.pi * 200 * np.arange(6 * sr) / sr)).astype(np.float32)
+    sf.write(tmp_path / "in.wav", x, sr)
+    y, _ = sf.read(clean_audio(tmp_path / "in.wav", tmp_path / "out.wav", off))
+    assert abs(np.abs(y).max() - 0.1) < 0.01          # not normalised, nothing filtered
+
+
+def test_whole_sample_reference_is_capped_at_15_s(tmp_path):
+    sr = 24000
+    sf.write(tmp_path / "clean.wav", (0.2 * np.sin(2 * np.pi * 200 * np.arange(30 * sr) / sr)).astype(np.float32), sr)
+    ref = pick_reference(tmp_path / "clean.wav", tmp_path / "ref.wav", tmp_path / "work", mode="whole")
+    assert duration(ref) == 15.0

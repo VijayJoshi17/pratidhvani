@@ -52,7 +52,8 @@ benchmark's leak check stops the run if they do.
    Variables, set `GATE_APPROVER` to the GitHub login allowed to start gate
    runs. Until it is set, the label does nothing.
 6. Create the labels `benchmark` and `experiment`.
-7. Score main once: Actions -> quality-gate -> Run workflow.
+7. Optionally score main ahead of time: Actions -> quality-gate -> Run workflow.
+   Otherwise the first gated pull request scores it (and caches it).
 
 ## Disk
 

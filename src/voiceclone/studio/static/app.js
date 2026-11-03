@@ -8,6 +8,7 @@ let config = { languages: {} };
 let current = null;      // id of the voice on screen
 let chosen = null;       // File or Blob for the new voice
 let pollTimer = null;
+let panelsFor = null;    // which voice (and trained state) the option panels were drawn for
 
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
@@ -20,6 +21,68 @@ async function api(path, opts = {}) {
 }
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const fmtSec = (s) => s == null ? "" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+// ---------- options (schema from /api/config, see studio/options.py) ----------
+const defaultsOf = (group) => Object.fromEntries(config.options[group].fields.map((f) => [f.key, f.default]));
+
+function renderOptions(id, group, values, unavailable = {}) {
+  const g = config.options[group];
+  const v = { ...defaultsOf(group), ...(values || {}) };
+  const fields = g.fields.map((f) => (unavailable[f.key] ? { ...f, available: false, why: unavailable[f.key] } : f));
+  const grid = el("div", { className: "opt-grid" });
+  for (const f of fields) {
+    let input;
+    if (f.type === "bool") input = el("input", { type: "checkbox", checked: !!v[f.key] });
+    else if (f.type === "choice") input = el("select", {}, ...f.choices.map(([k, l]) => el("option", { value: k, textContent: l })));
+    else input = el("input", { type: "number", min: f.min, max: f.max, step: f.step ?? 1, value: v[f.key] });
+    if (f.type === "choice") input.value = v[f.key];
+    Object.assign(input.dataset, { key: f.key, type: f.type });
+    input.disabled = !f.available;
+    const hint = f.help ? el("span", { className: "hint", textContent: f.help }) : "";
+    const wrap = f.type === "bool"
+      ? el("label", { className: "opt check" }, input, el("span", {}, f.label, el("br"), hint))
+      : el("label", { className: "opt" }, el("span", { textContent: f.label }), input, hint);
+    if (!f.available) { wrap.classList.add("na"); wrap.title = f.why || "Not installed on this server"; }
+    if (f.needs) wrap.dataset.needs = f.needs;
+    grid.append(wrap);
+  }
+  const sync = () => grid.querySelectorAll("[data-needs]").forEach((w) => {
+    const on = grid.querySelector(`[data-key="${w.dataset.needs}"]`).checked;
+    w.classList.toggle("off", !on);
+    w.querySelector("[data-key]").disabled = !on || w.classList.contains("na");
+  });
+  const setAll = (on) => {
+    grid.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach((i) => (i.checked = on));
+    sync();
+  };
+  const head = el("div", { className: "opt-head" }, el("h4", { textContent: g.label }));
+  if (fields.filter((f) => f.type === "bool" && f.available).length > 1) {
+    head.append(el("button", { type: "button", className: "btn btn-quiet small", textContent: "All on", onclick: () => setAll(true) }),
+      el("button", { type: "button", className: "btn btn-quiet small", textContent: "All off", onclick: () => setAll(false) }));
+  }
+  head.append(el("button", { type: "button", className: "btn btn-quiet small", textContent: "Defaults",
+    onclick: () => renderOptions(id, group, null, unavailable) }));
+  grid.addEventListener("change", sync);
+  $(id).replaceChildren(head, grid);
+  sync();
+}
+
+function readOptions(id) {
+  const o = {};
+  $(id).querySelectorAll("[data-key]").forEach((i) => {
+    if (i.closest(".na")) return;   // not offered here: the server keeps its default
+    o[i.dataset.key] = i.dataset.type === "bool" ? i.checked : i.dataset.type === "choice" ? i.value : Number(i.value);
+  });
+  return o;
+}
+
+function describeClean(c) {
+  if (!c) return "";
+  const on = [c.declip && "declip", c.highpass && `high-pass ${c.highpass_hz} Hz`,
+    c.denoise && `denoise ${c.denoise_db} dB`, c.enhance && `MossFormer2${c.super_res ? " + super-resolution" : ""}`,
+    c.normalize && "normalise"].filter(Boolean);
+  return `Cleaned with: ${on.length ? on.join(" · ") : "no processing"}`;
+}
 
 // ---------- list ----------
 async function refreshList() {
@@ -111,12 +174,14 @@ async function submitCreate(e) {
   fd.append("name", name);
   fd.append("lang", $("f-lang").value);
   fd.append("ref_text", $("f-text").value);
+  fd.append("options", JSON.stringify({ clean: readOptions("o-create-clean"), reference: readOptions("o-create-reference") }));
   fd.append("file", chosen, chosen.name || "sample.webm");
   const btn = $("create-submit");
   btn.disabled = true; btn.textContent = "Uploading…";
   try {
     const v = await api("/api/voices", { method: "POST", body: fd });
     $("create-form").reset(); setChosen(null); showError("create-error", "");
+    renderCreateOptions();
     go(`#/voice/${v.id}`);
   } catch (err) { showError("create-error", err.message); }
   finally { btn.disabled = false; btn.textContent = "Clone voice"; }
@@ -153,6 +218,16 @@ function renderVoice(v) {
   if (v.status === "failed") $("v-steps").lastChild.className = "fail";
   showError("v-error", v.status === "failed" ? v.error : "");
 
+  const trainedNow = v.train.status === "trained";
+  if (panelsFor !== `${v.id}:${trainedNow}`) {   // draw once per voice, so polling never wipes edits
+    panelsFor = `${v.id}:${trainedNow}`;
+    renderOptions("o-voice-clean", "clean", v.options?.clean);
+    renderOptions("o-voice-reference", "reference", v.options?.reference);
+    renderOptions("o-generate", "generate", null, trainedNow ? {} : { trained: "Train the voice first" });
+    renderOptions("o-train", "train", v.train.options);
+  }
+  $("v-clean-used").textContent = describeClean(v.options?.clean);
+  $("v-reclean").hidden = BUSY.has(v.status);
   const cleaned = v.sample_sec != null;
   $("v-audio-card").hidden = !v.original;
   if (v.original) setAudio("a-original", `${base}/original`);
@@ -173,13 +248,14 @@ function renderVoice(v) {
   $("v-model-badge").textContent = trained ? "Trained clone" : "Instant clone";
   $("v-model-badge").className = `badge ${trained ? "trained" : ""}`;
   $("v-previews").replaceChildren(...v.previews.map((p) => {
-    const meta = p.status === "done" ? `${p.trained ? "trained" : "instant"} · take ${p.seed + 1} · ${p.seconds} s in ${p.gen_time} s`
+    const settings = p.params ? ` · temp ${p.params.temperature}, top-p ${p.params.top_p}` : "";
+    const meta = p.status === "done" ? `${p.trained ? "trained" : "instant"} · seed ${p.seed}${settings} · ${p.seconds} s in ${p.gen_time} s`
       : p.status === "failed" ? `failed: ${p.error || ""}` : p.status === "running" ? "generating…" : "waiting…";
     const li = el("li", {}, el("p", { className: "pt", textContent: p.text, lang: v.lang }));
     if (p.status === "done") {
       li.append(el("audio", { controls: true, preload: "none", src: `${base}/preview?id=${p.id}` }));
       li.append(el("button", { className: "btn btn-quiet small", textContent: "Another take",
-        onclick: () => generate(v.id, p.text, p.seed + 1) }));
+        onclick: () => generate(v.id, p.text, { ...readOptions("o-generate"), seed: p.seed + 1, takes: 1 }) }));
     }
     li.append(el("span", { className: "pm", textContent: ` ${meta}` }));
     return li;
@@ -202,8 +278,8 @@ function renderVoice(v) {
   $("v-train-log").scrollTop = 1e9;
 }
 
-async function generate(id, text, seed = 0) {
-  try { await api(`/api/voices/${id}/previews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, seed }) }); }
+async function generate(id, text, options) {
+  try { await api(`/api/voices/${id}/previews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, options }) }); }
   catch (err) { return alert(err.message); }
   clearTimeout(pollTimer); loadVoice();
 }
@@ -211,7 +287,7 @@ async function generate(id, text, seed = 0) {
 function setupVoice() {
   $("v-generate").addEventListener("click", () => {
     const text = $("v-say").value.trim();
-    if (text) generate(current, text);
+    if (text) generate(current, text, readOptions("o-generate"));
   });
   $("v-ref-save").addEventListener("click", async () => {
     const ref_text = $("v-ref-text").value.trim();
@@ -235,10 +311,24 @@ function setupVoice() {
     try { await api(`/api/voices/${current}/recordings`, { method: "POST", body: fd }); } catch (err) { alert(err.message); }
     loadVoice();
   });
-  $("v-train").addEventListener("click", async () => {
-    try { await api(`/api/voices/${current}/train`, { method: "POST" }); } catch (err) { return alert(err.message); }
+  $("v-reclean-go").addEventListener("click", async () => {
+    const body = { clean: readOptions("o-voice-clean"), reference: readOptions("o-voice-reference") };
+    try { await api(`/api/voices/${current}/clean`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+    catch (err) { return alert(err.message); }
+    $("v-reclean").open = false;   // the panels keep what was just chosen
     clearTimeout(pollTimer); loadVoice();
   });
+  $("v-train").addEventListener("click", async () => {
+    const body = { options: readOptions("o-train") };
+    try { await api(`/api/voices/${current}/train`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+    catch (err) { return alert(err.message); }
+    clearTimeout(pollTimer); loadVoice();
+  });
+}
+
+function renderCreateOptions() {
+  renderOptions("o-create-clean", "clean");
+  renderOptions("o-create-reference", "reference");
 }
 
 // ---------- start ----------
@@ -246,6 +336,7 @@ function setupVoice() {
   config = await api("/api/config");
   $("f-lang").replaceChildren(...Object.entries(config.languages).map(([k, n]) => el("option", { value: k, textContent: n })));
   $("max-mb").textContent = config.sample_max_mb;
+  renderCreateOptions();
   if (config.min_train_minutes) $("min-min").textContent = config.min_train_minutes;
   setupDrop(); setupVoice();
   $("rec-start").addEventListener("click", startRecording);
