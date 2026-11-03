@@ -60,6 +60,28 @@ def encode_clips(clips_dir, clips: list[dict], device) -> dict:
     return cache
 
 
+MIN_REFS = 8   # distinct reference clips the reference swap draws from
+
+
+def reference_pool(train: list[dict], max_ref_sec: float, log=print) -> list[dict]:
+    """Clips that can serve as the prompt's reference: those up to `max_ref_sec`.
+
+    Clips cut at pauses (`vad`, `prepare`, the studio) are mostly 5-10 s, so a
+    small set can have one short clip or none, and every pair needs a reference
+    other than its target. With fewer than MIN_REFS short clips, the shortest
+    MIN_REFS clips are used instead.
+    """
+    if len(train) < 2:
+        raise ValueError(f"training needs at least 2 clips, got {len(train)}")
+    refs = [c for c in train if c["duration"] <= max_ref_sec]
+    if len(refs) < MIN_REFS:
+        short = len(refs)
+        refs = sorted(train, key=lambda c: c["duration"])[:MIN_REFS]
+        log(f"only {short} training clips are {max_ref_sec:g} s or shorter; using the {len(refs)} shortest "
+            f"as references (up to {refs[-1]['duration']:.1f} s)")
+    return refs
+
+
 def finetune(clips_dir, out_dir, model_dir: str = DEFAULT_MODEL, p: TrainParams = TrainParams(), log=print):
     import torch
     from peft import LoraConfig, PeftModel, get_peft_model
@@ -79,7 +101,7 @@ def finetune(clips_dir, out_dir, model_dir: str = DEFAULT_MODEL, p: TrainParams 
     write_json(out / "holdout.json", holdout)
     cache = encode_clips(clips_dir, clips, device)
     log(f"train clips={len(train)} holdout={len(holdout)} train audio={sum(c['duration'] for c in train)/60:.1f} min")
-    refs = [c for c in train if c["duration"] <= p.max_ref_sec]
+    refs = reference_pool(train, p.max_ref_sec, log)
 
     class Pairs(Dataset):
         def __len__(self):
