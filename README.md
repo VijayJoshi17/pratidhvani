@@ -58,6 +58,43 @@ in the same "reference-swap" prompt format the model uses at inference.
 
 ## Installation
 
+Pick the route that reaches your machine's GPU: generating speech with the
+3B model on a CPU takes minutes per sentence, and training needs a GPU.
+
+| Your machine | Use | Runs on |
+|---|---|---|
+| Mac with Apple silicon | [native install](#native-install) | Apple GPU |
+| Linux with an NVIDIA GPU | [`:cuda` Docker image](#docker), or the native install | CUDA |
+| Anything else, or a quick try | [`:latest` Docker image](#docker) | CPU |
+| Working on the code | [from source](#from-source) | whatever the machine has |
+
+### Native install
+
+```bash
+brew install ffmpeg uv
+```
+
+```bash
+uv tool install "indic-voice-clone[all]"
+```
+
+```bash
+voiceclone serve
+```
+
+Open http://127.0.0.1:8000. On Linux, install `ffmpeg` with your package
+manager and uv from https://docs.astral.sh/uv/. A C++ compiler is needed once,
+to build the aligner (`xcode-select --install` on a Mac; `build-essential`
+on Debian or Ubuntu). For the gated IndicConformer model, accept its terms on
+Hugging Face and run `hf auth login`, or set `HF_TOKEN`. The models need about
+10 GB of disk on first use. `uv tool upgrade indic-voice-clone` updates it.
+
+The package is published to PyPI from each release (see
+[CONTRIBUTING.md](CONTRIBUTING.md#releasing)). Until the first release,
+install from source.
+
+### From source
+
 ```bash
 git clone https://github.com/svayatta/indic-voice-clone.git
 cd indic-voice-clone
@@ -235,6 +272,18 @@ voice studio by default.
 
 ### Run the studio
 
+`:latest` runs on any machine with CPU-only torch. On a Linux host with an
+NVIDIA GPU and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/),
+use `:cuda` with `--gpus all` instead (linux/amd64, about 6 GB, CUDA 12.6;
+any CUDA 12 driver, 525 or newer):
+
+```bash
+docker run -d --name voiceclone --gpus all -p 127.0.0.1:8000:8000 -v voiceclone:/data -e HF_TOKEN=hf_... ghcr.io/svayatta/indic-voice-clone:cuda
+```
+
+On a CPU-only machine:
+
 ```bash
 docker pull ghcr.io/svayatta/indic-voice-clone:latest
 ```
@@ -287,11 +336,11 @@ It builds under emulation, so it takes longer.
 
 ### What it can't do
 
-The image uses CPU-only torch. Docker on a Mac can't use the Apple GPU, and a
-CUDA build would be about three times the size. Cleaning, transcription and
-the studio are fine on CPU. Synthesis with the 3B model takes minutes per
-sentence, and training is impractical. Train with a native install
-(see [Installation](#installation)) on Apple silicon or an NVIDIA GPU.
+Docker on a Mac can't use the Apple GPU, so on a Mac the image always runs on
+CPU. Cleaning, transcription and the studio are fine there, but synthesis with
+the 3B model takes minutes per sentence and training is impractical. Use the
+[native install](#native-install) on a Mac, and `:cuda` or the native install
+on an NVIDIA machine.
 
 If `docker pull` says `denied`, the package is private. Run
 `docker login ghcr.io` with a GitHub token that has `read:packages`.

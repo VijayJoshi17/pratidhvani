@@ -100,3 +100,28 @@ what has been tried is in [docs/experiments/log.md](docs/experiments/log.md).
 4. If you push new commits, the owner relabels after reviewing them.
 
 See [ci/README.md](ci/README.md) for how the gate runner is set up.
+
+## Releasing
+
+A release publishes the package to PyPI (`.github/workflows/release.yml`), so
+`uv tool install "indic-voice-clone[all]"` works anywhere, and attaches the
+wheel and sdist to a GitHub release. The Docker images publish on every merge
+to `main`, separately.
+
+One-time setup (owner):
+1. On pypi.org, under Your account -> Publishing, add a pending trusted
+   publisher: project `indic-voice-clone`, owner `svayatta`, repository
+   `indic-voice-clone`, workflow `release.yml`, environment `pypi`.
+2. In the repository, Settings -> Environments -> New environment `pypi`, with
+   yourself as required reviewer, so no release goes out unapproved.
+
+Each release: bump `version` in `pyproject.toml` in a pull request, merge it,
+then tag the merge commit and push the tag:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The workflow refuses a tag that doesn't match `pyproject.toml`. It builds the
+wheel and checks that it installs and runs. Then it waits for your approval
+of the `pypi` environment, publishes, and creates the GitHub release.
