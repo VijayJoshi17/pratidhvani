@@ -26,7 +26,8 @@ def build_clips(vad_dirs, out_dir, encoder, aligner, speaker_centroid,
     """Keep chunks that are the target speaker and whose transcript fits the audio.
 
     Each vad dir holds chunk WAVs, segments.jsonl and transcripts.jsonl.
-    Writes the kept WAVs + metadata.jsonl {file,text,start,end,duration,score,sim}.
+    Writes the kept WAVs + metadata.jsonl {file,text,start,end,duration,score,sim[,source]};
+    `source` (the recording, e.g. from import-vault) is kept so benchmarks can tell what trained.
     """
     segs, trans = {}, []
     for d in map(Path, vad_dirs):
@@ -56,7 +57,8 @@ def build_clips(vad_dirs, out_dir, encoder, aligner, speaker_centroid,
         if max(w["end"] - w["start"] for w in ws) > f.max_word_dur: drop("long_word"); continue
         shutil.copy(s["dir"] / t["file"], out / t["file"])
         kept.append({"file": t["file"], "text": text, "start": s["start"], "end": s["end"],
-                     "duration": s["duration"], "score": round(float(np.mean(pf)), 3), "sim": round(sim, 3)})
+                     "duration": s["duration"], "score": round(float(np.mean(pf)), 3), "sim": round(sim, 3),
+                     **({"source": s["source"]} if s.get("source") else {})})
     write_jsonl(out / "metadata.jsonl", kept)
     return {"transcribed": len(trans), "kept": len(kept),
             "minutes": sum(k["duration"] for k in kept) / 60, "dropped": why}
