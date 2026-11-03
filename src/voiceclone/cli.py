@@ -83,7 +83,15 @@ def cmd_build_clips(a):
 
     enc = SpeakerEncoder(a.ecapa_dir)
     cent = enc.centroid_from_clips(a.enroll, a.n_enroll)
-    _log(build_clips(a.vad, a.out, enc, Aligner(), cent, ClipFilter(min_sim=a.min_sim), log=_log))
+    lo, hi = a.min_f0, a.max_f0
+    if a.f0_from_enroll:
+        from voiceclone.dataset import f0_range
+        from voiceclone.jsonl import read_jsonl
+
+        lo, hi = f0_range([Path(a.enroll) / c["file"] for c in read_jsonl(Path(a.enroll) / "metadata.jsonl")])
+        _log(f"pitch window from the enrollment clips: {lo:.0f}-{hi:.0f} Hz")
+    f = ClipFilter(min_sim=a.min_sim, min_f0=lo, max_f0=hi)
+    _log(build_clips(a.vad, a.out, enc, Aligner(), cent, f, log=_log))
 
 
 def cmd_rank(a):
@@ -289,6 +297,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--enroll", required=True, help="clip folder (metadata.jsonl) of the target speaker")
     p.add_argument("--n-enroll", type=int, default=40)
     p.add_argument("--out", default="data/clips_v2"); p.add_argument("--min-sim", type=float, default=0.5)
+    p.add_argument("--min-f0", type=float, default=None, help="drop chunks whose median pitch is below this (Hz)")
+    p.add_argument("--max-f0", type=float, default=None, help="drop chunks whose median pitch is above this (Hz)")
+    p.add_argument("--f0-from-enroll", action="store_true",
+                   help="pitch window = 5th-95th percentile of the enrollment clips' median pitch")
     ecapa(p)
 
     p = add("rank", cmd_rank, "Rank recordings by speaker match, SNR, bandwidth and speech density")
