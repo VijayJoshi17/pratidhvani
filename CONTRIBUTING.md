@@ -77,6 +77,10 @@ push to `main` directly.
 
 ## Running an experiment
 
+What to try next, in order, is in [docs/experiment-plan.md](docs/experiment-plan.md);
+what has been tried is in [docs/experiments/log.md](docs/experiments/log.md).
+
+
 1. Branch from `main` and fill in the experiment card in the pull request
    template.
 2. Change the recipe or the code. Run `pytest` and `python ci/check_hygiene.py`
