@@ -198,27 +198,86 @@ listens on this computer only unless you pass `--host`.
 ## Docker
 
 Each merge to `main` publishes an image for linux/amd64 and linux/arm64 to
-`ghcr.io/svayatta/indic-voice-clone` (`latest` plus a `sha-…` tag per
-commit). It runs the voice studio by default:
+`ghcr.io/svayatta/indic-voice-clone` (`latest`, plus a `sha-…` tag per
+commit). It contains the `voiceclone` command and every extra, and runs the
+voice studio by default.
+
+### Before you start
+
+- **A Docker engine.** Docker Desktop, OrbStack or Podman on macOS or
+  Windows; Docker Engine on Linux.
+- **Memory for the engine's VM.** Give it at least 16 GB if you'll generate
+  speech: on CPU the 3B model loads in 32-bit floats, about 12 GB. Docker
+  Desktop's default is often lower (Settings → Resources). Cleaning and
+  transcription alone need about 4 GB.
+- **Disk.** About 2 GB for the image and 10 GB for the models it downloads on
+  first use.
+- **A Hugging Face token** that can read the gated
+  [IndicConformer](https://huggingface.co/ai4bharat/indic-conformer-600m-multilingual)
+  model (accept its terms first). A read-only token is enough.
+
+### Run the studio
 
 ```bash
-docker run --rm -p 127.0.0.1:8000:8000 -v voiceclone:/data -e HF_TOKEN ghcr.io/svayatta/indic-voice-clone
+docker pull ghcr.io/svayatta/indic-voice-clone:latest
 ```
 
-Open http://127.0.0.1:8000. Everything the container writes goes into the
-`voiceclone` volume: voices, downloaded models and the Hugging Face cache.
-`HF_TOKEN` must be able to read the gated IndicConformer model. Any other
-`voiceclone` command runs the same way, for example
-`docker run --rm -v voiceclone:/data ghcr.io/svayatta/indic-voice-clone benchmark --help`.
+```bash
+docker run -d --name voiceclone -p 127.0.0.1:8000:8000 -v voiceclone:/data -e HF_TOKEN=hf_... ghcr.io/svayatta/indic-voice-clone:latest
+```
 
-The image uses CPU-only torch. Docker on a Mac cannot use the Apple GPU, and
-the CUDA build would triple the size. Cleaning and transcription are fine on
-CPU, but synthesis with the 3B model takes minutes per sentence, and training
-is impractical. Train with a native install on Apple silicon or an NVIDIA GPU.
+Open http://127.0.0.1:8000. The first sample takes a few minutes while the
+models download into the `voiceclone` volume; later runs reuse them.
+`127.0.0.1:` keeps the studio reachable from this computer only.
 
-While the repository is private, the image is private too: log in with
-`docker login ghcr.io` using a token with `read:packages`, or make the package
-public in its GitHub settings.
+| To | Run |
+|---|---|
+| Follow the log | `docker logs -f voiceclone` |
+| Stop it | `docker stop voiceclone` |
+| Start it again (same settings and data) | `docker start voiceclone` |
+| Update to the newest image | `docker pull ghcr.io/svayatta/indic-voice-clone:latest`, then `docker rm -f voiceclone` and the `docker run` above |
+| Remove the container | `docker rm -f voiceclone` (voices and models stay in the volume) |
+| Delete all voices and downloaded models | `docker volume rm voiceclone` |
+
+To keep the data in a visible folder instead of a volume, use
+`-v "$HOME/voiceclone-data:/data"`. On Linux, that folder must be writable by
+user id 1000, the container's user.
+
+### Other commands
+
+Any `voiceclone` subcommand runs the same way. Mount the folder with your
+recordings at `/work`:
+
+```bash
+docker run --rm -v voiceclone:/data -v "$PWD:/work" ghcr.io/svayatta/indic-voice-clone:latest restore /work/talk.mp3 --decode-first --out /work/talk_clean.wav
+```
+
+### Build the image yourself
+
+From a checkout of this repository:
+
+```bash
+docker build -t indic-voice-clone .
+```
+
+```bash
+docker run -d --name voiceclone -p 127.0.0.1:8000:8000 -v voiceclone:/data -e HF_TOKEN=hf_... indic-voice-clone
+```
+
+To build for the other architecture (for example amd64 on an Apple-silicon
+Mac), use `docker buildx build --platform linux/amd64 -t indic-voice-clone --load .`.
+It builds under emulation, so it takes longer.
+
+### What it can't do
+
+The image uses CPU-only torch. Docker on a Mac can't use the Apple GPU, and a
+CUDA build would be about three times the size. Cleaning, transcription and
+the studio are fine on CPU. Synthesis with the 3B model takes minutes per
+sentence, and training is impractical. Train with a native install
+(see [Installation](#installation)) on Apple silicon or an NVIDIA GPU.
+
+If `docker pull` says `denied`, the package is private. Run
+`docker login ghcr.io` with a GitHub token that has `read:packages`.
 
 ## Comparing runs
 
