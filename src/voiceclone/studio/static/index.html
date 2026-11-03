@@ -71,6 +71,12 @@
           </div>
         </div>
 
+        <details class="opts">
+          <summary>Cleaning and reference options</summary>
+          <div class="opt-group" id="o-create-clean"></div>
+          <div class="opt-group" id="o-create-reference"></div>
+        </details>
+
         <details class="more">
           <summary>I know exactly what is said in the sample (optional)</summary>
           <p class="muted small">Leave empty and it is transcribed automatically. Only fill this in if it matches the audio word for word.</p>
@@ -101,6 +107,14 @@
           <figure><figcaption>Uploaded</figcaption><audio id="a-original" controls preload="none"></audio></figure>
           <figure><figcaption>After cleaning</figcaption><audio id="a-clean" controls preload="none"></audio></figure>
         </div>
+        <p class="muted small" id="v-clean-used"></p>
+        <details class="opts" id="v-reclean">
+          <summary>Clean again with other options</summary>
+          <div class="opt-group" id="o-voice-clean"></div>
+          <div class="opt-group" id="o-voice-reference"></div>
+          <p class="muted small">The reference clip may change, so its words are transcribed again.</p>
+          <div class="actions"><button id="v-reclean-go" class="btn btn-line">Clean again</button></div>
+        </details>
       </div>
 
       <div class="card" id="v-ref-card" hidden>
@@ -114,6 +128,10 @@
       <div class="card" id="v-try-card" hidden>
         <h3>Try the voice</h3>
         <textarea id="v-say" rows="3" maxlength="400" lang="kn" placeholder="Type what the voice should say"></textarea>
+        <details class="opts">
+          <summary>Generation options</summary>
+          <div class="opt-group" id="o-generate"></div>
+        </details>
         <div class="actions">
           <span id="v-model-badge" class="badge"></span>
           <button id="v-generate" class="btn btn-accent">Generate</button>
@@ -125,6 +143,10 @@
         <h3>Train a stronger clone</h3>
         <p class="muted small">The instant clone copies the voice's colour but often not the accent. Training learns the accent from longer recordings: it needs at least <b id="min-min">8</b> minutes of this person speaking alone, after cleaning and filtering, and takes several hours. Other speakers in the recordings are filtered out using this voice's sample.</p>
         <ul id="v-recordings" class="files"></ul>
+        <details class="opts">
+          <summary>Training options</summary>
+          <div class="opt-group" id="o-train"></div>
+        </details>
         <div class="actions">
           <label class="btn btn-line">Add recordings<input id="v-rec-files" type="file" accept="audio/*" multiple hidden></label>
           <button id="v-train" class="btn btn-ink">Start training</button>

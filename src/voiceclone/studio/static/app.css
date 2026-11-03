@@ -66,7 +66,20 @@ textarea { resize: vertical; }
 .drop-title { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 0 0 2px; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .drop-actions { display: flex; gap: 10px; justify-content: center; margin: 14px 0 10px; }
 .drop audio { width: 100%; margin: 10px 0 4px; }
-.more summary { cursor: pointer; color: var(--muted); }
+.more summary, .opts summary { cursor: pointer; color: var(--muted); }
+.opts { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.opts[open] summary { margin-bottom: 8px; }
+.opt-group + .opt-group { margin-top: 14px; }
+.opt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.opt-head h4 { font: 600 13px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 auto 0 0; }
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 18px; }
+.opt { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.opt.check { flex-direction: row; align-items: flex-start; gap: 8px; }
+.opt.check input { width: auto; margin-top: 3px; accent-color: var(--accent); }
+.opt input[type=number], .opt select { padding: 6px 9px; }
+.opt .hint { font-size: 12px; color: var(--muted); }
+.opt.off { opacity: .45; }
+.opt.na { opacity: .45; }
 .more textarea { margin-top: 8px; }
 .actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
 

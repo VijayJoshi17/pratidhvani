@@ -13,10 +13,12 @@ SPEC="$VOICECLONE_DATA/bench.json"
 REPORT="$PWD/gate-report.md"
 mkdir -p "$VOICECLONE_STATE/runs" "$VOICECLONE_STATE/venvs"
 
-# Everything a score depends on: the package code, pinned dependencies, the recipe and the benchmark.
+# Everything a score depends on: the package code (minus the web studio, which no recipe or
+# benchmark runs), pinned dependencies, the recipe and the benchmark.
 # Two checkouts with the same key produce the same scores, so a run is never repeated.
 run_key() {
-  { git -C "$1" rev-parse HEAD:src HEAD:pyproject.toml HEAD:constraints.txt HEAD:ci/recipe.json
+  { git -C "$1" ls-tree -r HEAD src | grep -v $'\tsrc/voiceclone/studio/'
+    git -C "$1" rev-parse HEAD:pyproject.toml HEAD:constraints.txt HEAD:ci/recipe.json
     shasum -a 256 < "$SPEC"; } | shasum -a 256 | cut -c1-16
 }
 

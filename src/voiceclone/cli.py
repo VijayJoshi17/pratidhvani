@@ -276,7 +276,7 @@ def cmd_serve(a):
     from voiceclone.studio.engine import Engine
     from voiceclone.studio.jobs import Studio
 
-    engine = Engine(a.model, a.ecapa_dir, a.enhance_python, a.enhance_wet, a.min_train_minutes)
+    engine = Engine(a.model, a.ecapa_dir, a.enhance_python, a.min_train_minutes)
     _log(f"voice studio on http://{a.host}:{a.port}  (voices in {Path(a.root).resolve()})")
     uvicorn.run(create_app(Studio(a.root, engine)), host=a.host, port=a.port, log_level="warning")
 
@@ -471,8 +471,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default="127.0.0.1", help="127.0.0.1 keeps it on this computer")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--model", default=DEFAULT_MODEL)
-    p.add_argument("--enhance-python", default=None, help="python of an env with clearvoice, to also run MossFormer2")
-    p.add_argument("--enhance-wet", type=float, default=1.0)
+    p.add_argument("--enhance-python", default=None,
+                   help="python of an env with clearvoice: offers MossFormer2 enhancement on the page")
     p.add_argument("--min-train-minutes", type=float, default=8.0)
     ecapa(p)
     return ap

@@ -1,4 +1,5 @@
 """HTTP API and page for the studio (FastAPI). `voiceclone serve` runs it."""
+import json
 import re
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from voiceclone.studio.jobs import Studio
+from voiceclone.studio.options import OptionError, parse, schema
 
 STATIC = Path(__file__).parent / "static"
 SAMPLE_MAX_MB = 30
@@ -19,7 +21,16 @@ AUDIO_EXT = {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm", 
 
 class PreviewIn(BaseModel):
     text: str = Field(min_length=1, max_length=400)
-    seed: int = 0
+    options: dict | None = None     # generation options (options.py)
+
+
+class CleanIn(BaseModel):
+    clean: dict | None = None
+    reference: dict | None = None
+
+
+class TrainIn(BaseModel):
+    options: dict | None = None
 
 
 class VoicePatch(BaseModel):
@@ -56,6 +67,13 @@ async def _save(upload: UploadFile, dst: Path, max_mb: int) -> Path:
 def create_app(studio: Studio) -> FastAPI:
     app = FastAPI(title="Voice studio", docs_url=None, redoc_url=None)
     store = studio.store
+    caps = set(getattr(studio.engine, "capabilities", set()))
+
+    def opts(group, data):
+        try:
+            return parse(group, data, caps)
+        except OptionError as e:
+            raise HTTPException(400, str(e)) from None
 
     def voice(vid):
         try:
@@ -70,7 +88,7 @@ def create_app(studio: Studio) -> FastAPI:
     @app.get("/api/config")
     def config():
         return {"languages": LANGUAGES, "sample_max_mb": SAMPLE_MAX_MB, "recording_max_mb": RECORDING_MAX_MB,
-                "min_train_minutes": getattr(studio.engine, "min_train_minutes", None)}
+                "min_train_minutes": getattr(studio.engine, "min_train_minutes", None), "options": schema(caps)}
 
     @app.get("/api/voices")
     def list_voices():
@@ -78,12 +96,18 @@ def create_app(studio: Studio) -> FastAPI:
 
     @app.post("/api/voices", status_code=201)
     async def create_voice(name: str = Form(...), lang: str = Form("kn"), ref_text: str = Form(""),
-                           file: UploadFile = File(...)):
+                           options: str = Form("{}"), file: UploadFile = File(...)):
         name = name.strip()
         if not name or len(name) > 80:
             raise HTTPException(400, "give the voice a name (up to 80 characters)")
         if lang not in LANGUAGES:
             raise HTTPException(400, f"language must be one of {sorted(LANGUAGES)}")
+        try:
+            o = json.loads(options or "{}")
+            assert isinstance(o, dict)
+        except (ValueError, AssertionError):
+            raise HTTPException(400, "options must be a JSON object") from None
+        chosen = {"clean": opts("clean", o.get("clean")), "reference": opts("reference", o.get("reference"))}
         fname = "original_" + _safe_name(file.filename, "sample")
         v = store.create(name, lang)
         try:
@@ -91,7 +115,7 @@ def create_app(studio: Studio) -> FastAPI:
         except HTTPException:
             store.delete(v["id"])
             raise
-        studio.add_sample(v["id"], Path(fname), ref_text.strip() or None)
+        studio.add_sample(v["id"], Path(fname), ref_text.strip() or None, chosen)
         return store.get(v["id"])
 
     @app.get("/api/voices/{vid}")
@@ -114,11 +138,22 @@ def create_app(studio: Studio) -> FastAPI:
         voice(vid)
         store.delete(vid)
 
+    @app.post("/api/voices/{vid}/clean", status_code=202)
+    def reclean(vid: str, body: CleanIn):
+        voice(vid)
+        chosen = {"clean": opts("clean", body.clean), "reference": opts("reference", body.reference)}
+        try:
+            studio.reclean(vid, chosen)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from None
+        return store.get(vid)
+
     @app.post("/api/voices/{vid}/previews", status_code=202)
     def add_preview(vid: str, body: PreviewIn):
         voice(vid)
+        params = opts("generate", body.options)
         try:
-            return studio.preview(vid, body.text.strip(), body.seed)
+            return studio.preview(vid, body.text.strip(), params)
         except ValueError as e:
             raise HTTPException(409, str(e)) from None
 
@@ -133,10 +168,11 @@ def create_app(studio: Studio) -> FastAPI:
         return store.get(vid)
 
     @app.post("/api/voices/{vid}/train", status_code=202)
-    def train(vid: str):
+    def train(vid: str, body: TrainIn | None = None):
         voice(vid)
+        chosen = opts("train", body.options if body else None)
         try:
-            studio.train(vid)
+            studio.train(vid, chosen)
         except ValueError as e:
             raise HTTPException(409, str(e)) from None
         return store.get(vid)

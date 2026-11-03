@@ -176,10 +176,10 @@ recordings with `prepare`, then retrain or continue training with
 ## Voice studio (web app)
 
 A local web page for the whole flow: name a voice, drop a 5-45 s sample or
-record one in the browser, and the server cleans it (the same ffmpeg
-restoration as `prepare`, plus MossFormer2 when `--enhance-python` is given),
-picks the clearest 3-10 s stretch as the reference, transcribes it verbatim
-and makes an instant clone you can type text for. You can hear the upload and
+record one in the browser, and the server cleans it (by default the same
+ffmpeg restoration as `prepare`), picks the clearest 3-10 s stretch as the
+reference, transcribes it verbatim and makes an instant clone you can type
+text for. You can hear the upload and
 the cleaned audio side by side, and correct the reference words. With longer
 recordings of the same person (8 minutes or more of their speech alone), it
 also trains a LoRA clone. The sample decides which voice to keep, other
@@ -189,6 +189,22 @@ speakers are filtered out, and previews then use the trained adapter.
 uv pip install --python .venv/bin/python -e ".[all]" -c constraints.txt
 voiceclone serve --root studio            # http://127.0.0.1:8000
 ```
+
+Every step has options, in collapsible panels with **All on**, **All off**
+and **Defaults** buttons:
+
+| Panel | Options |
+|---|---|
+| Cleaning (new voice, or "Clean again") | declip; high-pass and its cut-off; spectral denoise, its strength and noise floor; MossFormer2 enhancement, its mix and super-resolution; peak normalisation |
+| Reference clip | the clearest 3-10 s stretch, or the whole sample (first 15 s) |
+| Generation | instant or trained clone; number of takes and first seed; temperature, top-p, repetition penalty, longest take |
+| Training | enhancement of the recordings; speaker-match threshold; pitch gate and its range; epochs, learning rate, LoRA rank, held-out clips, seed |
+
+The defaults are the settings behind the reference results. MossFormer2
+options are offered only when the server is started with
+`--enhance-python` pointing at an environment with `clearvoice`. Each voice
+records the options it was cleaned and trained with, and each preview records
+its generation settings.
 
 Voices are kept under `studio/voices/<id>/`: the upload, `clean.wav`,
 `reference.wav`, previews and training output. Jobs run one at a time,

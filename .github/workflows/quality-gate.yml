@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
     # only what the score depends on (ci/gate.sh's run key); docs and CI changes need no new baseline
-    paths: ["src/**", pyproject.toml, constraints.txt, ci/recipe.json, ci/gate.sh]
+    paths: ["src/**", "!src/voiceclone/studio/**", pyproject.toml, constraints.txt, ci/recipe.json, ci/gate.sh]
   workflow_dispatch:
 
 permissions:
