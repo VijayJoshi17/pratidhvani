@@ -15,3 +15,6 @@ __pycache__/
 *.flac
 *.safetensors
 *.npz
+
+# voice studio data (voiceclone serve --root studio)
+/studio/

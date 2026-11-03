@@ -248,6 +248,39 @@ def cmd_listen_page(a):
     write_listening_page(a.run_a, a.run_b, a.out, a.check_every, a.seed, log=_log)
 
 
+def cmd_run_recipe(a):
+    from voiceclone.recipe import run_recipe
+
+    _log("wrote", run_recipe(a.recipe, a.data, a.work, a.spec, log=_log))
+
+
+def cmd_gate(a):
+    from voiceclone.compare import compare_runs, load_run
+    from voiceclone.gate import evaluate_gate, format_markdown
+
+    base, cand = load_run(a.baseline), load_run(a.candidate)
+    metrics = compare_runs(base, cand, a.n_boot)
+    result = evaluate_gate(base, cand, metrics, a.require_improvement)
+    md = format_markdown(base, cand, metrics, result)
+    _log(md)
+    if a.report:
+        Path(a.report).write_text(md + "\n", encoding="utf-8")
+    sys.exit(0 if result["passed"] else 1)
+
+
+# ---------- studio ----------
+def cmd_serve(a):
+    import uvicorn
+
+    from voiceclone.studio.app import create_app
+    from voiceclone.studio.engine import Engine
+    from voiceclone.studio.jobs import Studio
+
+    engine = Engine(a.model, a.ecapa_dir, a.enhance_python, a.enhance_wet, a.min_train_minutes)
+    _log(f"voice studio on http://{a.host}:{a.port}  (voices in {Path(a.root).resolve()})")
+    uvicorn.run(create_app(Studio(a.root, engine)), host=a.host, port=a.port, log_level="warning")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="voiceclone", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -417,6 +450,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, help="HTML file; its .key.json is written next to it")
     p.add_argument("--check-every", type=int, default=6, help="one hidden real-clip check per N trials (0 = none)")
     p.add_argument("--seed", type=int, default=0)
+
+    # quality gate
+    p = add("run-recipe", cmd_run_recipe, "Run a recipe (ci/recipe.json) end to end and benchmark its adapter")
+    p.add_argument("--recipe", default="ci/recipe.json")
+    p.add_argument("--data", required=True, help="the shared, read-only data folder ({data} in the recipe)")
+    p.add_argument("--work", required=True, help="new folder for this run ({work} in the recipe)")
+    p.add_argument("--spec", required=True, help="benchmark spec JSON")
+
+    p = add("gate", cmd_gate, "Pass or fail a candidate benchmark run against main's (exit code 1 = fail)")
+    p.add_argument("baseline"); p.add_argument("candidate")
+    p.add_argument("--require-improvement", action="store_true",
+                   help="fail unless at least one metric is better with confidence (experiments)")
+    p.add_argument("--n-boot", type=int, default=10000)
+    p.add_argument("--report", default=None, help="also write the verdict as Markdown")
+
+    # studio
+    p = add("serve", cmd_serve, "Voice studio: upload a sample, clean it, hear and train the clone in a browser")
+    p.add_argument("--root", default="studio", help="where voices are kept")
+    p.add_argument("--host", default="127.0.0.1", help="127.0.0.1 keeps it on this computer")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--model", default=DEFAULT_MODEL)
+    p.add_argument("--enhance-python", default=None, help="python of an env with clearvoice, to also run MossFormer2")
+    p.add_argument("--enhance-wet", type=float, default=1.0)
+    p.add_argument("--min-train-minutes", type=float, default=8.0)
+    ecapa(p)
     return ap
 
 
