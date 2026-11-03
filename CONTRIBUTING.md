@@ -5,6 +5,14 @@ means a voice closer to the speaker, words that are right, and an accent
 that native listeners accept. Everything here is so that a change can be shown
 to do that, or shown not to, without anyone's opinion deciding it.
 
+## Licence of contributions
+
+The repository is released under the PolyForm Noncommercial License, and
+Svayatta Forge also licenses it commercially. By submitting a pull request,
+you confirm that you have the right to contribute the change and that
+Svayatta Forge may license it under any terms, commercial ones included.
+Contributors keep the copyright in their own work.
+
 ## Ground rules
 
 1. **One hypothesis, one change.** Before training, write down what you expect

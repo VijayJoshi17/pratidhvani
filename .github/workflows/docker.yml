@@ -42,6 +42,10 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+          labels: |
+            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+          annotations: |
+            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
       - name: Build for amd64 and load it locally
         uses: docker/build-push-action@v7
         with:
@@ -69,5 +73,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
