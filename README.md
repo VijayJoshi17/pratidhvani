@@ -3,7 +3,8 @@
 Clone one speaker of an Indic language, regional accent included, from a few
 archival recordings. It was built and tested on northern Kannada lecture tapes,
 on a 16 GB Apple-silicon laptop. The voice model and codec are open-source and
-licensed for commercial use.
+licensed for commercial use. This code is free for non-commercial use;
+commercial use needs a licence from Svayatta Forge (see [Licence](#licence)).
 
 How it works: the recordings are cleaned lightly and cut into short chunks.
 Each chunk is transcribed verbatim in the dialect, and only clean chunks of
@@ -561,3 +562,20 @@ benchmarks the pull request's recipe with the real model on a self-hosted
 runner and fails if any metric is worse than main. Experiments must also show
 an improvement. See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules and
 [ci/README.md](ci/README.md) for the runner.
+
+## Licence
+
+Copyright 2026 Svayatta Forge. The code and the Docker image are released
+under the [PolyForm Noncommercial License 1.0.0](LICENSE): free for
+personal use, research, education, and charitable, public-research and
+government organisations, and for modifying and sharing on those terms.
+
+**Commercial use of any kind needs a separate written licence from Svayatta
+Forge.** That includes using it in a product or service, offering it to
+customers, or using it inside a company for business. Contact
+partha@svayattaforge.com.
+
+The models the code downloads have their own licences (see
+[Models and licences](#models-and-licences)). In particular, the MMS
+alignment weights are CC-BY-NC, so a commercial licence covers this code but
+cannot cover those weights.
