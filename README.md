@@ -318,6 +318,12 @@ recordings at `/work`:
 docker run --rm -v voiceclone:/data -v "$PWD:/work" ghcr.io/svayatta/indic-voice-clone:latest restore /work/talk.mp3 --decode-first --out /work/talk_clean.wav
 ```
 
+To check a recording for the [watermark](#watermark):
+
+```bash
+docker run --rm -v voiceclone:/data -v "$PWD:/work" ghcr.io/svayatta/indic-voice-clone:latest detect /work/suspect.mp3
+```
+
 ### Build the image yourself
 
 From a checkout of this repository:
@@ -344,6 +350,37 @@ on an NVIDIA machine.
 
 If `docker pull` says `denied`, the package is private. Run
 `docker login ghcr.io` with a GitHub token that has `read:packages`.
+
+## Watermark
+
+Every take the software generates carries an inaudible watermark: studio
+previews, `synth`, `long-form` and benchmark runs alike. It is
+[AudioSeal](https://github.com/facebookresearch/audioseal) (Meta, MIT) with a
+fixed 16-bit tag that identifies this software. There is no option to turn it
+off. To check a recording:
+
+```bash
+voiceclone detect suspect.mp3 another.wav
+```
+
+```
+suspect.mp3: made with indic-voice-clone (detector 1.00, 16/16 tag bits)
+another.wav: no watermark found (detector 0.00, 8/16 tag bits)
+```
+
+On our tests it survives MP3, AAC and Opus compression, telephone-band (8 kHz)
+audio, cropping and volume changes, and it sits about 26 dB below the voice.
+Genuine recordings of the speaker scored 0.
+
+What it can't do:
+
+- It marks what *this software* makes. Anyone can edit the code to remove the
+  mark, or run a trained adapter with other software. It is a label that
+  honest use keeps, not a lock.
+- Heavy added noise weakens it, so not finding it doesn't prove a recording
+  is genuine.
+- "Another source" means an AudioSeal mark with a different tag, from other
+  software that uses AudioSeal.
 
 ## Comparing runs
 
@@ -475,6 +512,7 @@ for every option.
 | Run a recipe | `run-recipe --recipe ci/recipe.json --data DATA --work RUN --spec DATA/bench.json` | adapter + benchmark run |
 | Quality gate | `gate MAIN_RUN PR_RUN [--require-improvement]` | pass/fail + Markdown report |
 | Web app | `serve --root studio` | the voice studio on port 8000 |
+| Check for the watermark | `detect FILE...` | whether each file was made with this software |
 
 If you have a timed human transcript (`[SS:MM:00] [Speaker] : text`) instead
 of verbatim ASR, use `parse-transcript`, `align` and `segment --speaker NAME`
@@ -559,7 +597,8 @@ src/voiceclone/
   rank.py         recording ranking
   svara/tokens.py prompt layout, SNAC token mapping, generation length budget (pure Python)
   svara/codec.py  SNAC encode/decode
-  svara/synth.py  Synthesizer (zero-shot or LoRA)
+  svara/synth.py  Synthesizer (zero-shot or LoRA); watermarks every take
+  watermark.py    AudioSeal embed and detect
   train.py        reference-swap LoRA fine-tuning
   evaluate.py     similarity, intelligibility, best-of selection
   benchmark.py    frozen benchmark spec, leakage guard, scoring, leaderboard
@@ -581,6 +620,7 @@ ci/               hygiene check, gate script and runner notes
 |---|---|
 | `kenpath/svara-tts-voiceclone-beta` (3B, 19 Indic languages) | Apache 2.0 |
 | `hubertsiuzdak/snac_24khz` codec | MIT |
+| AudioSeal watermark (code and weights) | MIT |
 | AI4Bharat IndicConformer 600M | MIT |
 | SpeechBrain ECAPA-TDNN | Apache 2.0 |
 | ClearerVoice MossFormer2 | Apache 2.0 |
@@ -602,6 +642,8 @@ The unit tests cover transliteration, transcript parsing, the Svara token and
 prompt layout, pause segmentation, take selection, the benchmark's leakage
 guard, paired comparison and listening page, the gate's rules, recipe checks
 and the studio's API. They need no models (the cleaning tests need ffmpeg).
+`tests/test_watermark.py` needs torch and AudioSeal and is skipped without
+them; CI runs it in its own `watermark` job.
 
 ## Contributing and the quality gate
 

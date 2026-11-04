@@ -6,6 +6,7 @@ accelerate==1.15.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
+audioseal==0.2.1
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.2
@@ -42,6 +43,7 @@ narwhals==2.27.1
 networkx==3.7
 numba==0.68.0
 numpy==2.5.4
+omegaconf==2.4.0
 onnxruntime==1.20.1
 packaging==26.3
 peft==0.21.2
@@ -58,8 +60,8 @@ pyyaml==6.0.3
 regex==2026.9.29
 requests==2.34.2
 rich==15.0.0
-ruamel-yaml==0.18.17
 ruamel-yaml-clib==0.2.15
+ruamel-yaml==0.18.17
 safetensors==0.8.0
 scikit-learn==1.9.1
 scipy==1.18.1
