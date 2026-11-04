@@ -151,6 +151,21 @@ def cmd_synth(a):
     synthesize_to_dir(synth, sentences, a.ref, ref_text, a.out, a.seed, _gen_params(a), log=_log)
 
 
+def cmd_detect(a):
+    from voiceclone.audio import load16
+    from voiceclone.watermark import SR, Watermark
+
+    wm, found = Watermark(), 0
+    for f in a.files:
+        d = wm.detect(load16(f), SR)
+        found += d.ours
+        verdict = ("made with indic-voice-clone" if d.ours else
+                   "AudioSeal watermark from another source" if d.marked else "no watermark found")
+        print(f"{f}: {verdict} (detector {d.probability:.2f}, {16 - d.bit_errors}/16 tag bits)")
+    if not found:
+        print("no watermark doesn't prove a recording is genuine: the code can be changed, and heavy noise can hide it")
+
+
 def cmd_train(a):
     from voiceclone.train import TrainParams, finetune
 
@@ -372,6 +387,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--min-sps", type=float, default=min_sps, help="cap at syllables/min_sps + 1.5 s")
         p.add_argument("--max-sps", type=float, default=6.0, help="floor at syllables/max_sps s")
         p.add_argument("--seed", type=int, default=0)
+
+    p = add("detect", cmd_detect, "Check recordings for the watermark that every generated take carries")
+    p.add_argument("files", nargs="+", help="audio files (WAV, MP3, M4A, ... anything librosa reads)")
 
     p = add("synth", cmd_synth, "Speak sentences in the reference speaker's voice")
     p.add_argument("--ref", required=True, help="reference clip of the speaker (4-8 s works well)")

@@ -7,6 +7,7 @@ from voiceclone.audio import TTS_SR, load_wav, write_wav
 from voiceclone.jsonl import write_json
 from voiceclone.svara.tokens import EOS, PAD, build_prompt, token_budget
 from voiceclone.text import syllables
+from voiceclone.watermark import Watermark
 
 DEFAULT_MODEL = "kenpath/svara-tts-voiceclone-beta"
 
@@ -40,6 +41,7 @@ class Synthesizer:
             model = PeftModel.from_pretrained(model, lora).eval()
         self.model = model
         self.codec = Codec(self.device)
+        self.watermark = Watermark()
         self._torch = torch
 
     def reference(self, wav_path) -> list[int]:
@@ -65,7 +67,8 @@ class Synthesizer:
         new = gen[0, ids.shape[1]:].tolist()
         if EOS in new:
             new = new[: new.index(EOS)]
-        return self.codec.decode(new), len(new)
+        # every take is watermarked; there is deliberately no switch to turn it off
+        return self.watermark.embed(self.codec.decode(new), TTS_SR), len(new)
 
 
 def synthesize_to_dir(synth: Synthesizer, sentences: list[str], ref_wav, ref_text, out_dir,

@@ -60,7 +60,7 @@ jobs:
       - name: Smoke test
         run: |
           docker run --rm voiceclone:test --help > /dev/null
-          docker run --rm --entrypoint python voiceclone:test -c "import torch, transformers, peft, speechbrain, fastapi, voiceclone.studio.app; print('torch', torch.__version__)"
+          docker run --rm --entrypoint python voiceclone:test -c "import torch, transformers, peft, speechbrain, fastapi, audioseal, voiceclone.studio.app, voiceclone.watermark; print('torch', torch.__version__)"
           docker run -d --name studio -p 8000:8000 voiceclone:test
           for _ in $(seq 30); do curl -sf localhost:8000/api/config > /dev/null && break; sleep 2; done
           curl -sf localhost:8000/api/config

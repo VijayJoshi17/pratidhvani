@@ -13,7 +13,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "soundfile", "librosa"]
 
 [project.optional-dependencies]
-tts = ["torch", "transformers", "accelerate", "peft", "snac", "safetensors", "huggingface_hub"]
+tts = ["torch", "torchaudio", "transformers", "accelerate", "peft", "snac", "safetensors", "huggingface_hub", "audioseal"]
 align = ["ctc-forced-aligner", "onnxruntime==1.20.1", "unidecode"]
 speaker = ["torch", "torchaudio", "speechbrain"]
 asr = ["torch", "torchaudio", "transformers"]
