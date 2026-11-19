@@ -7,11 +7,12 @@ to do that, or shown not to, without anyone's opinion deciding it.
 
 ## Licence of contributions
 
-The repository is released under the PolyForm Noncommercial License, and
-Svayatta Forge also licenses it commercially. By submitting a pull request,
-you confirm that you have the right to contribute the change and that
-Svayatta Forge may license it under any terms, commercial ones included.
-Contributors keep the copyright in their own work.
+The repository is released under the [Apache License 2.0](LICENSE). By
+submitting a pull request, you confirm that you have the right to contribute
+the change and that you license it under Apache 2.0 (section 5 of the
+licence). Contributors keep the copyright in their own work.
+
+Audio is never contributed or licensed: see [NOTICE](NOTICE) and rule 5.
 
 ## Ground rules
 

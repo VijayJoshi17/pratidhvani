@@ -45,9 +45,9 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
           labels: |
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=Apache-2.0
           annotations: |
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=Apache-2.0
       - name: Build for amd64 and load it locally
         uses: docker/build-push-action@v7
         with:
@@ -105,9 +105,9 @@ jobs:
             type=raw,value=cuda,suffix=,enable={{is_default_branch}}
             type=sha,format=short
           labels: |
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=Apache-2.0
           annotations: |
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=Apache-2.0
       - name: Build (CUDA) and load it locally
         uses: docker/build-push-action@v7
         with:

@@ -3,8 +3,8 @@
 Clone one speaker of an Indic language, regional accent included, from a few
 archival recordings. It was built and tested on northern Kannada lecture tapes,
 on a 16 GB Apple-silicon laptop. The voice model and codec are open-source and
-licensed for commercial use. This code is free for non-commercial use;
-commercial use needs a licence from Svayatta Forge (see [Licence](#licence)).
+licensed for commercial use. This code is open source under Apache 2.0; no
+audio is licensed (see [Licence](#licence)).
 
 How it works: the recordings are cleaned lightly and cut into short chunks.
 Each chunk is transcribed verbatim in the dialect, and only clean chunks of
@@ -656,17 +656,17 @@ an improvement. See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules and
 
 ## Licence
 
-Copyright 2026 Svayatta Forge. The code and the Docker image are released
-under the [PolyForm Noncommercial License 1.0.0](LICENSE): free for
-personal use, research, education, and charitable, public-research and
-government organisations, and for modifying and sharing on those terms.
+Copyright 2026 Svayatta Forge. The code, documentation and Docker images are
+released under the [Apache License 2.0](LICENSE), commercial use included.
+See [NOTICE](NOTICE).
 
-**Commercial use of any kind needs a separate written licence from Svayatta
-Forge.** That includes using it in a product or service, offering it to
-customers, or using it inside a company for business. Contact
-partha@svayattaforge.com.
+**No audio is licensed.** The recordings used to develop and test this
+project, their transcripts, and any weights or adapters trained on them are
+not part of the release, and no licence is granted for them: neither Svayatta
+Forge nor the contributors hold the right to distribute them. You need the
+right to use any voice and recording you process yourself.
 
 The models the code downloads have their own licences (see
 [Models and licences](#models-and-licences)). In particular, the MMS
-alignment weights are CC-BY-NC, so a commercial licence covers this code but
-cannot cover those weights.
+alignment weights are CC-BY-NC, so commercial use of the full pipeline needs
+a different aligner.

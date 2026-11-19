@@ -15,7 +15,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 # ctc-forced-aligner ships as source with a C++ extension
 RUN apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY pyproject.toml constraints.txt README.md ./
+COPY pyproject.toml constraints.txt README.md LICENSE NOTICE ./
 COPY src ./src
 # torch and torchaudio first, from the chosen index; the constraints then pin
 # everything else to the tested versions (torch==2.14.1 matches 2.14.1+cpu / +cu126).
