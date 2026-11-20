@@ -5,6 +5,7 @@ together), so the engine frees the synthesizer before training and the
 other way round.
 """
 import gc
+import shutil
 from pathlib import Path
 
 from voiceclone.studio.options import ENHANCE
@@ -63,6 +64,12 @@ class Engine:
             if params else GenParams()
         return synth.generate(text, synth.reference(ref_wav), ref_text, seed=seed, p=p)
 
+    def watermark(self, wav):
+        """Mark audio that the studio joins from takes of the loaded synthesizer."""
+        from voiceclone.audio import TTS_SR
+
+        return self._synth[1].watermark.embed(wav, TTS_SR)
+
     def release(self) -> None:
         self._synth = None
         gc.collect()
@@ -100,6 +107,8 @@ class Engine:
         rec_clean = {**(clean_opts or defaults("clean")), "enhance": opts["enhance"]}
         self.release()
         work = Path(work)
+        for stale in ("chunks", "clean", "clips"):   # old transcripts and SNAC tokens must not meet new audio
+            shutil.rmtree(work / stale, ignore_errors=True)
         chunk_dirs = []
         for i, rec in enumerate(recordings):
             tag = f"R{i:02d}"
