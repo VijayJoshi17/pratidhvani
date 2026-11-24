@@ -89,6 +89,43 @@ def create(client, sec=12, name="Narrator", **form):
                        files={"file": ("sample.wav", wav_bytes(sec), "audio/wav")})
 
 
+def test_config_lists_added_languages(env):
+    client, _, _, _ = env
+    languages = client.get("/api/config").json()["languages"]
+    assert {code: languages[code] for code in ("or", "pa", "as", "sa", "ne")} == {
+        "or": "Odia",
+        "pa": "Punjabi",
+        "as": "Assamese",
+        "sa": "Sanskrit",
+        "ne": "Nepali",
+    }
+
+
+@pytest.mark.parametrize("lang", ["or", "pa", "as", "sa", "ne"])
+def test_voice_can_be_created_with_added_language(env, lang):
+    client, _, _, _ = env
+    r = create(client, lang=lang)
+    assert r.status_code == 201
+    assert r.json()["lang"] == lang
+
+
+def test_textarea_languages_follow_the_selected_voice_and_create_language(env):
+    client, _, _, _ = env
+    page = client.get("/").text
+    script = client.get("/static/app.js").text
+    assert 'id="v-ref-text"' in page and 'id="v-say"' in page
+    assert 'lang="kn"' not in page
+    for node in ("v-ref-card", "v-ref-text", "a-reference", "v-ref-save", "v-try-card"):
+        assert page.count(f'id="{node}"') == 1
+    assert '<details class="card fold" id="v-try-card" hidden>' in page
+    before_try_card = page.split('<details class="card fold" id="v-try-card"', 1)[0].rstrip()
+    assert before_try_card.endswith("</div>")
+    for node in ("v-now", "v-try-error", "v-keys", "v-say-len", "v-previews"):
+        assert f'id="{node}"' in page
+    assert '$("create-form").lang = $("f-lang").value;' in script
+    assert '["v-ref-text", "v-say"].forEach((i) => $(i).lang = v.lang);' in script
+
+
 def test_sample_is_cleaned_then_transcribed_then_ready(env):
     client, _, engine, drain = env
     r = create(client)
