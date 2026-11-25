@@ -11,8 +11,15 @@ permissions:
 
 jobs:
   test:
+    # Every Python that `requires-python` claims. constraints.txt pins the 3.12
+    # reference environment (numpy 2.5 needs 3.12+), so 3.10 and 3.11 install
+    # the newest releases that support them, as the README describes.
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -21,9 +28,15 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
       - name: Install the package
+        env:
+          PYTHON: ${{ matrix.python }}
         run: |
-          uv venv --python 3.12
-          uv pip install -e ".[dev]" -c constraints.txt
+          uv venv --python "$PYTHON"
+          if [ "$PYTHON" = 3.12 ]; then
+            uv pip install -e ".[dev]" -c constraints.txt
+          else
+            uv pip install -e ".[dev]"
+          fi
       - name: Repository rules (no audio, weights, home paths or sys.path edits; valid recipe)
         run: .venv/bin/python ci/check_hygiene.py
       - name: Tests
