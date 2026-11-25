@@ -135,3 +135,37 @@ def test_studio_preview_of_several_sentences_is_marked(wm, tmp_path, n, sentence
     clean = np.concatenate([x for t in takes for x in (gap, t)][1:])
     assert len(wav) == len(clean)
     assert 10 * np.log10((clean ** 2).sum() / ((wav - clean) ** 2).sum()) > 20
+
+
+@pytest.mark.parametrize("take_sec, slot_sec", [(3.0, 3.5), (1.0, 1.5), (4.0, 2.0)],
+                         ids=["in-step", "short-takes", "takes-run-long"])
+def test_long_form_join_is_marked(wm, tmp_path, take_sec, slot_sec):
+    """`long-form` writes cloned.wav by copying each marked take into a
+    buffer of silence at its chunk's start. The detector scores the share of
+    the file that is marked, so the silence between takes counts against it:
+    the joined file must still be recognised as ours."""
+    import soundfile as sf
+
+    from voiceclone.jsonl import write_jsonl
+    from voiceclone.longform import long_form
+
+    n = 4
+    d = tmp_path / "chunks"
+    d.mkdir()
+    write_jsonl(d / "segments.jsonl", [{"file": f"c{i}.wav", "start": i * slot_sec,
+                                        "end": i * slot_sec + min(take_sec, slot_sec)} for i in range(n)])
+    write_jsonl(d / "transcripts.jsonl", [{"file": f"c{i}.wav", "text": f"ವಾಕ್ಯ {i}"} for i in range(n)])
+    sf.write(tmp_path / "source.wav", voice_like(n * slot_sec + 1), SR)   # unmarked, like a real recording
+
+    class Synth:   # stands in for Synthesizer: generate returns marked takes
+        def reference(self, ref_wav):
+            return None
+
+        def generate(self, text, ref_tokens, ref_text, seed=0, p=None):
+            return wm.embed(voice_like(take_sec, seed=seed), SR), {}
+
+    out = long_form(Synth(), d, tmp_path / "source.wav", None, "", tmp_path / "out", log=lambda *a: None)
+    wav, sr = sf.read(out / "cloned.wav", dtype="float32")   # the 16-bit file
+    assert wm.detect(wav, sr).ours, wm.detect(wav, sr)
+    # the original next to it is a real recording and must not be claimed
+    assert not wm.detect(sf.read(out / "original.wav", dtype="float32")[0], SR).marked
